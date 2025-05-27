@@ -1,12 +1,14 @@
 //! By convention, main.zig is where your main function lives in the case that
 //! you are building an executable. If you are making a library, the convention
 //! is to delete this file and start with root.zig instead.
+const cli = @import("cli.zig");
 const expect = std.testing.expect;
 const eql = std.mem.eql;
 const stdout = std.io.getStdOut();
 const stdin = std.io.getStdIn();
 
 pub fn main() !void {
+    cli.run();
     // Prints to stderr (it's a shortcut based on `std.io.getStdErr()`)
     std.debug.print("All your {s} are belong to us.\n", .{"codebase"});
 

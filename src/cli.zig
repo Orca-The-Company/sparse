@@ -5,7 +5,7 @@ const CommandError = @import("cli/command.zig").Error;
 
 fn parse(alloc: Allocator) !Command {
     _ = alloc;
-    return .{ .check = .{} };
+    return .{ .new = .{} };
 }
 
 pub fn run() !void {

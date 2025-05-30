@@ -28,6 +28,26 @@ pub fn parseArgs(
     iter: anytype,
 ) !void {
     _ = alloc;
-    _ = dst;
-    _ = iter;
+    // eger adam -- ya da - ile baslayan bir arguman gondermisse
+    // optionlarin field ve declerationlarina bakmamiz gerekir
+    // eger declaration ile match olursak calistir ve cik
+    // field ile match olursak kullanicinin gonderdigi value you set et
+    // ve argumanlarda donmeye devam et
+    while (iter.next()) |arg| {
+        if (std.mem.startsWith(u8, arg, "--")) {
+
+            // so this command has help capability
+            if (@hasDecl(@TypeOf(dst.options), "help")) {
+                if (std.mem.eql(u8, arg, "--help")) {
+                    std.debug.print("{s}\n", .{try dst.options.help()});
+                    return;
+                }
+            }
+        } else {}
+    }
+    // inline for (@typeInfo(T).@"struct".fields) |field| {
+    //     if (!std.mem.eql(u8, @ptrCast(field.name), "options")) {
+    //         @field(T, "orphan") = "hello";
+    //     }
+    // }
 }

@@ -4,14 +4,15 @@ const Allocator = @import("std").mem.Allocator;
 const log = @import("std").log.scoped(".check_command");
 
 pub const Options = struct {
-    pub fn help() ![]u8 {
-        return "Hello Moto!";
+    pub fn help(self: Options) ![]u8 {
+        _ = self;
+        return @constCast("Hello Moto!");
     }
 };
 pub const Args = struct {
-    var options: Options = .{};
+    options: Options = .{},
 
-    var branch: ?[]u8 = undefined;
+    branch: ?[]u8 = undefined,
 };
 
 pub const CheckCommand = struct {
@@ -20,7 +21,7 @@ pub const CheckCommand = struct {
         var args: Args = .{};
         var iterator = try std.process.argsWithAllocator(alloc);
         defer iterator.deinit();
-        try command.parseArgs(Args, alloc, &args, iterator);
+        try command.parseArgs(Args, alloc, &args, &iterator);
         return 0;
         // check [options] [<branch>]
         // options:

@@ -4,7 +4,19 @@ const Command = @import("cli/command.zig").Command;
 const CommandError = @import("cli/command.zig").Error;
 
 fn parse(alloc: Allocator) !Command {
-    _ = alloc;
+    //_ = alloc;
+    const my_commands = @typeInfo(Command).@"union".fields;
+    const args = try std.process.argsAlloc(alloc);
+    defer std.process.argsFree(alloc, args);
+    if (args.len < 2) {
+        return CommandError.UnknownCommand;
+    }
+    std.debug.print("{any}", .{@TypeOf(args[1])});
+    inline for (my_commands) |c| {
+        //if (std.mem.eql([:0]u8, command, c.name)) {
+        std.debug.print("{s}\n", .{c.name});
+        //}
+    }
     return .{ .new = .{} };
 }
 

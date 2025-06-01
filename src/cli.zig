@@ -8,16 +8,18 @@ fn parse(alloc: Allocator) !Command {
     const my_commands = @typeInfo(Command).@"union".fields;
     const args = try std.process.argsAlloc(alloc);
     defer std.process.argsFree(alloc, args);
+
     if (args.len < 2) {
         return CommandError.UnknownCommand;
     }
-    std.debug.print("{any}", .{@TypeOf(args[1])});
+    std.debug.print("{any}\n", .{@TypeOf(args[1])});
     inline for (my_commands) |c| {
-        //if (std.mem.eql([:0]u8, command, c.name)) {
-        std.debug.print("{s}\n", .{c.name});
-        //}
+        if (std.mem.eql(u8, args[1], c.name)) {
+            std.debug.print("{s}\n", .{c.name});
+            return @field(Command, c.name);
+        }
     }
-    return .{ .new = .{} };
+    return CommandError.UnknownCommand;
 }
 
 pub fn run() !void {

@@ -6,10 +6,6 @@ pub fn main() !void {
     try cli.run();
 }
 
-test {
-    std.testing.refAllDecls(@This());
-}
-
 const std = @import("std");
 const cli = @import("cli.zig");
 

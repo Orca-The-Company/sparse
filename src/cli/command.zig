@@ -3,6 +3,9 @@ const Allocator = std.mem.Allocator;
 const CheckCommand = @import("check_command.zig").CheckCommand;
 const NewCommand = @import("new_command.zig").NewCommand;
 
+pub const CString = [*:0]const u8;
+pub const StringSentinel = [:0]const u8;
+
 pub const Error = error{
     // More than 1 command detected only one command in one run is supported
     MultipleCommand,

@@ -3,6 +3,9 @@ const Allocator = std.mem.Allocator;
 const CheckCommand = @import("check_command.zig").CheckCommand;
 const NewCommand = @import("new_command.zig").NewCommand;
 
+pub const CString = [*:0]const u8;
+pub const StringSentinel = [:0]const u8;
+
 pub const Error = error{
     // More than 1 command detected only one command in one run is supported
     MultipleCommand,
@@ -50,4 +53,42 @@ pub fn parseArgs(
     //         @field(T, "orphan") = "hello";
     //     }
     // }
+}
+
+test "parseArgs example options and args" {
+    const expectEqual = std.testing.expectEqual;
+    const ArrayList = std.ArrayList;
+    const allocator = std.testing.allocator;
+    const Options = struct {
+        @"--target": CString = "main",
+        @"--f": bool = false,
+        @"-a": bool = true,
+
+        pub fn help(self: @This()) ![]u8 {
+            _ = self;
+            return @constCast("Hello Moto!");
+        }
+    };
+    const Args = struct {
+        options: Options = .{},
+        start: bool = false,
+        after: ?bool = undefined,
+        new: ?struct {
+            files: ?ArrayList(CString) = undefined,
+        } = undefined,
+    };
+    var args: Args = .{};
+    const cli_args = "--f start --target dev after new a b c ddd";
+    const iter = std.mem.splitAny(u8, cli_args, " ");
+    try parseArgs(Args, allocator, &args, @constCast(&iter));
+    try expectEqual(true, args.start);
+    try expectEqual(true, args.after);
+    try expectEqual(true, args.options.@"--f");
+    try expectEqual(true, args.options.@"-a");
+    try expectEqual("dev", args.options.@"--target");
+    try expectEqual(4, args.new.?.files.?.items.len);
+    try expectEqual("ddd", args.new.?.files.?.items[3]);
+    try expectEqual("b", args.new.?.files.?.items[1]);
+    try expectEqual("c", args.new.?.files.?.items[2]);
+    try expectEqual("a", args.new.?.files.?.items[0]);
 }

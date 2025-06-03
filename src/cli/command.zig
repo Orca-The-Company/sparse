@@ -11,6 +11,7 @@ pub const Error = error{
     MultipleCommand,
     // Unknown command has been detected
     UnknownCommand,
+    MissingArgument,
 };
 
 pub const Command = union(enum) {
@@ -24,11 +25,56 @@ pub const Command = union(enum) {
     }
 };
 
+const ArgDeserializer = struct {
+    args: [][:0]u8,
+    argIndex: usize,
+
+    fn readInt(self: *ArgDeserializer, comptime T: anytype) !T {
+        if (self.args.len <= self.argIndex) {
+            return Error.MissingArgument;
+        }
+        const arg: []const u8 = self.args[self.argIndex];
+        self.argIndex += 1;
+        std.debug.print("parse int: {s}\n", .{arg});
+        return std.fmt.parseInt(T, arg, 10) catch 0;
+    }
+    fn readArray(self: *ArgDeserializer, comptime T: anytype) T {
+        _ = self;
+        std.debug.print("parse array\n", .{});
+        return T{};
+    }
+
+    fn readBool(self: *ArgDeserializer, comptime T: anytype) T {
+        _ = self;
+        return true;
+    }
+
+    fn readStruct(self: *ArgDeserializer, comptime T: anytype) !T {
+        const fields = @typeInfo(T).@"struct".fields;
+
+        var item: T = undefined;
+        inline for (fields) |field| {
+            @field(item, field.name) = try self.read(field.type);
+        }
+        return item;
+    }
+
+    pub fn read(self: *ArgDeserializer, comptime T: anytype) !T {
+        return switch (@typeInfo(T)) {
+            .int => try self.readInt(T),
+            //        .array => self.readArray(T, argIterator),
+            .@"struct" => self.readStruct(T),
+            .bool => self.readBool(T),
+            else => |case| @compileLog("unsupported type", case),
+        };
+    }
+};
+
 pub fn parseArgs(
     comptime T: type,
     alloc: Allocator,
     dst: *T,
-    iter: anytype,
+    args: [][:0]u8,
 ) !void {
     _ = alloc;
     // eger adam -- ya da - ile baslayan bir arguman gondermisse
@@ -36,18 +82,33 @@ pub fn parseArgs(
     // eger declaration ile match olursak calistir ve cik
     // field ile match olursak kullanicinin gonderdigi value you set et
     // ve argumanlarda donmeye devam et
-    while (iter.next()) |arg| {
-        if (std.mem.startsWith(u8, arg, "--")) {
+    std.debug.print("hello: {any}\n", .{dst});
+    // inline for (@typeInfo(@FieldType(T, "options")).@"struct".fields) |field| {
+    //     std.debug.print("field name: {s}\n", .{field.name});
+    // }
+    // if (@hasField(@FieldType(T, "options"), "--target")) {
+    //     std.debug.print("Hello I detected\n", .{});
+    // }
 
-            // so this command has help capability
-            if (@hasDecl(@TypeOf(dst.options), "help")) {
-                if (std.mem.eql(u8, arg, "--help")) {
-                    std.debug.print("{s}\n", .{try dst.options.help()});
-                    return;
-                }
-            }
-        } else {}
-    }
+    var deserializer = ArgDeserializer{ .args = args, .argIndex = 2 };
+    const result = try deserializer.read(T);
+    std.debug.print("result: {any}\n", .{result});
+
+    //     while (iter.next()) |arg| {
+    //         if (std.mem.startsWith(u8, arg, "--")) {
+
+    //             // so this command has help capability
+    //             if (@hasDecl(@TypeOf(dst.options), "help")) {
+    //                 if (std.mem.eql(u8, arg, "--help")) {
+    //                     std.debug.print("{s}\n", .{try dst.options.help()});
+    //                     return;
+    //                 }
+    //             }
+    //             if (hasInFieldsOf(@TypeOf(dst.options), arg)) {
+    //                 std.debug.print("found: {d}\n", .{arg});
+    //             }
+    //         } else {}
+    //     }
     // inline for (@typeInfo(T).@"struct".fields) |field| {
     //     if (!std.mem.eql(u8, @ptrCast(field.name), "options")) {
     //         @field(T, "orphan") = "hello";

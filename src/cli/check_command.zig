@@ -12,6 +12,7 @@ pub const Options = struct {
     }
 };
 pub const Args = struct {
+    c: bool = false,
     a: u32 = 5,
     b: u32 = 10,
     branch: struct {

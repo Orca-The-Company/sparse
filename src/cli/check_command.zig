@@ -15,10 +15,7 @@ pub const Args = struct {
     c: bool = false,
     a: u32 = 5,
     b: u32 = 10,
-    branch: struct {
-        branch: u32 = 0,
-        target: u32 = 0,
-    } = .{},
+    rest: [][:0]u8 = undefined,
 };
 
 pub const CheckCommand = struct {

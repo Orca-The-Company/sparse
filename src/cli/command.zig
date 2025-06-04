@@ -13,6 +13,7 @@ pub const Error = error{
     // Unknown command has been detected
     UnknownCommand,
     MissingArgument,
+    UnexpectedArgument,
 };
 
 pub const Command = union(enum) {
@@ -29,6 +30,7 @@ pub const Command = union(enum) {
 const ArgDeserializer = struct {
     args: [][:0]u8,
     argIndex: usize,
+    alloc: Allocator,
 
     fn readInt(self: *ArgDeserializer, comptime T: anytype) !T {
         if (self.args.len <= self.argIndex) {
@@ -36,13 +38,13 @@ const ArgDeserializer = struct {
         }
         const arg: []const u8 = self.args[self.argIndex];
         self.argIndex += 1;
-        return std.fmt.parseInt(T, arg, 10) catch 0;
+        return std.fmt.parseInt(T, arg, 10) catch Error.UnexpectedArgument;
     }
 
-    fn readArray(self: *ArgDeserializer, comptime T: anytype) T {
-        while (self.argIndex < self.args.len) : (self.argIndex += 1) {}
-        std.debug.print("parse array\n", .{});
-        return T{};
+    fn readPointer(self: *ArgDeserializer, comptime T: anytype) !T {
+        const dupe = self.args[self.argIndex..];
+        self.argIndex = self.args.len;
+        return dupe;
     }
 
     fn readBool(self: *ArgDeserializer, comptime T: anytype) T {
@@ -63,9 +65,9 @@ const ArgDeserializer = struct {
     pub fn read(self: *ArgDeserializer, comptime T: anytype) !T {
         return switch (@typeInfo(T)) {
             .int => try self.readInt(T),
-            //        .array => self.readArray(T, argIterator),
             .@"struct" => self.readStruct(T),
             .bool => self.readBool(T),
+            .pointer => self.readPointer(T),
             else => |case| @compileLog("unsupported type", case),
         };
     }
@@ -77,7 +79,6 @@ pub fn parseArgs(
     dst: *T,
     args: [][:0]u8,
 ) !void {
-    _ = alloc;
     // eger adam -- ya da - ile baslayan bir arguman gondermisse
     // optionlarin field ve declerationlarina bakmamiz gerekir
     // eger declaration ile match olursak calistir ve cik
@@ -91,8 +92,9 @@ pub fn parseArgs(
     //     std.debug.print("Hello I detected\n", .{});
     // }
 
-    var deserializer = ArgDeserializer{ .args = args, .argIndex = 2 };
+    var deserializer = ArgDeserializer{ .args = args, .argIndex = 2, .alloc = alloc };
     const result = try deserializer.read(T);
+
     std.debug.print("result: {any}\n", .{result});
 
     //     while (iter.next()) |arg| {

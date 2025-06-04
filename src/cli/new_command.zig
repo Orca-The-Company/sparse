@@ -18,9 +18,7 @@ pub const Options = struct {
 };
 
 pub const Args = struct {
-    options: Options = .{},
-    dev: ?[]u8 = undefined,
-    target: []u8 = @constCast("main"),
+    a: u32 = 10,
 };
 
 pub const NewCommand = struct {
@@ -30,11 +28,13 @@ pub const NewCommand = struct {
     //  -h, --help
     pub fn run(self: NewCommand, alloc: Allocator) !u8 {
         _ = self;
-        var args: Args = Args{};
+        var args: Args = .{};
 
-        var iterator = try std.process.argsWithAllocator(alloc);
-        defer iterator.deinit();
-        try command.parseArgs(Args, alloc, &args, &iterator);
+        // var iterator = try std.process.argsWithAllocator(alloc);
+        // defer iterator.deinit();
+        const cli_args = try std.process.argsAlloc(alloc);
+        defer std.process.argsFree(alloc, cli_args);
+        try command.parseArgs(Args, alloc, &args, cli_args);
         return 0;
     }
 };

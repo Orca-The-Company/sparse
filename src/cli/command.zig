@@ -4,6 +4,7 @@ const CheckCommand = @import("check_command.zig").CheckCommand;
 const NewCommand = @import("new_command.zig").NewCommand;
 
 pub const CString = [*:0]const u8;
+pub const ArgString = [:0]u8;
 pub const StringSentinel = [:0]const u8;
 
 pub const Error = error{
@@ -35,17 +36,17 @@ const ArgDeserializer = struct {
         }
         const arg: []const u8 = self.args[self.argIndex];
         self.argIndex += 1;
-        std.debug.print("parse int: {s}\n", .{arg});
         return std.fmt.parseInt(T, arg, 10) catch 0;
     }
+
     fn readArray(self: *ArgDeserializer, comptime T: anytype) T {
-        _ = self;
+        while (self.argIndex < self.args.len) : (self.argIndex += 1) {}
         std.debug.print("parse array\n", .{});
         return T{};
     }
 
     fn readBool(self: *ArgDeserializer, comptime T: anytype) T {
-        _ = self;
+        self.argIndex += 1;
         return true;
     }
 

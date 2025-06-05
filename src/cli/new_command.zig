@@ -18,23 +18,27 @@ pub const Options = struct {
 };
 
 pub const Args = struct {
-    a: u32 = 10,
+    advanced: ?struct {
+        branch: [1][]u8 = undefined,
+        target: ?[1][]u8 = .{@constCast("main")},
+    } = undefined,
 };
 
 pub const NewCommand = struct {
 
-    // sparse new [options] [<dev> [<target:-main>]]
+    // sparse new [options] [<branch> [--target:-main>]]
     // options:
     //  -h, --help
     pub fn run(self: NewCommand, alloc: Allocator) !u8 {
         _ = self;
         var args: Args = .{};
 
-        // var iterator = try std.process.argsWithAllocator(alloc);
-        // defer iterator.deinit();
         const cli_args = try std.process.argsAlloc(alloc);
         defer std.process.argsFree(alloc, cli_args);
         try command.parseArgs(Args, alloc, &args, cli_args);
+        if (args.advanced) |details| {
+            std.debug.print("{s} {s}\n", .{ details.branch[0], details.target.?[0] });
+        }
         return 0;
     }
 };

@@ -32,9 +32,15 @@ pub const NewCommand = struct {
     pub fn run(self: NewCommand, alloc: Allocator) !u8 {
         _ = self;
         var args: Args = .{};
+        const options: Options = .{};
+        _ = options;
 
         const cli_args = try std.process.argsAlloc(alloc);
         defer std.process.argsFree(alloc, cli_args);
+        var cli_struct = try command.splitCliArgs(alloc, cli_args);
+        defer cli_struct.@"0".deinit(alloc);
+        defer cli_struct.@"1".deinit(alloc);
+        std.debug.print("{any}", .{cli_struct});
         try command.parseArgs(Args, alloc, &args, cli_args);
         if (args.advanced) |details| {
             std.debug.print("{s} {s}\n", .{ details.branch[0], details.target.?[0] });

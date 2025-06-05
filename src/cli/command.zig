@@ -1,4 +1,5 @@
 const std = @import("std");
+const debug = std.debug.print;
 const Allocator = std.mem.Allocator;
 const CheckCommand = @import("check_command.zig").CheckCommand;
 const NewCommand = @import("new_command.zig").NewCommand;
@@ -106,6 +107,17 @@ const ArgDeserializer = struct {
         };
     }
 };
+
+pub fn splitCliArgs(alloc: Allocator, cli_args: [][:0]u8) !struct { std.ArrayListUnmanaged([]u8), std.ArrayListUnmanaged([]u8) } {
+    var positionals: std.ArrayListUnmanaged([]u8) = .empty;
+    var options: std.ArrayListUnmanaged([]u8) = .empty;
+    for (cli_args, 0..) |arg, index| {
+        try positionals.append(alloc, arg);
+        try options.append(alloc, arg);
+        debug("\n{s} {d}\n", .{ arg, index });
+    }
+    return .{ options, positionals };
+}
 
 pub fn parseArgs(
     comptime T: type,

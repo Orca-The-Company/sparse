@@ -38,7 +38,7 @@ pub const NewCommand = struct {
         const args = try std.process.argsAlloc(alloc);
         defer std.process.argsFree(alloc, args);
 
-        var cli_struct = try command.splitArgs(alloc, args);
+        var cli_struct = try command.splitArgs(alloc, args, Positionals, Options);
         defer cli_struct.@"0".deinit(alloc);
         defer cli_struct.@"1".deinit(alloc);
 

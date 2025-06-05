@@ -11,7 +11,7 @@ pub const Options = struct {
         return @constCast("Hello Moto!");
     }
 };
-pub const Args = struct {
+pub const Positionals = struct {
     c: bool = false,
     a: u32 = 5,
     b: u32 = 10,
@@ -21,11 +21,12 @@ pub const Args = struct {
 pub const CheckCommand = struct {
     pub fn run(self: CheckCommand, alloc: Allocator) !u8 {
         _ = self;
-        var args: Args = .{};
-        const cli_args = try std.process.argsAlloc(alloc);
-        defer std.process.argsFree(alloc, cli_args);
+        var positionals: Positionals = .{};
 
-        try command.parseArgs(Args, alloc, &args, cli_args);
+        const args = try std.process.argsAlloc(alloc);
+        defer std.process.argsFree(alloc, args);
+
+        try command.parsePositionals(Positionals, alloc, &positionals, args);
         return 0;
         // check [options] [<branch>]
         // options:

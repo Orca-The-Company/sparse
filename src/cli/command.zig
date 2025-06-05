@@ -108,7 +108,7 @@ const ArgDeserializer = struct {
     }
 };
 
-pub fn splitCliArgs(alloc: Allocator, cli_args: [][:0]u8) !struct { std.ArrayListUnmanaged([]u8), std.ArrayListUnmanaged([]u8) } {
+pub fn splitArgs(alloc: Allocator, cli_args: [][:0]u8) !struct { std.ArrayListUnmanaged([]u8), std.ArrayListUnmanaged([]u8) } {
     var positionals: std.ArrayListUnmanaged([]u8) = .empty;
     var options: std.ArrayListUnmanaged([]u8) = .empty;
     for (cli_args, 0..) |arg, index| {
@@ -119,7 +119,7 @@ pub fn splitCliArgs(alloc: Allocator, cli_args: [][:0]u8) !struct { std.ArrayLis
     return .{ options, positionals };
 }
 
-pub fn parseArgs(
+pub fn parsePositionals(
     comptime T: type,
     alloc: Allocator,
     dst: *T,
@@ -156,7 +156,7 @@ test "parseArgs example options and args" {
     var args: Args = .{};
     const cli_args = "--f start --target dev after new a b c ddd";
     const iter = std.mem.splitAny(u8, cli_args, " ");
-    try parseArgs(Args, allocator, &args, @constCast(&iter));
+    try parsePositionals(Args, allocator, &args, @constCast(&iter));
     try expectEqual(true, args.start);
     try expectEqual(true, args.after);
     try expectEqual(true, args.options.@"--f");

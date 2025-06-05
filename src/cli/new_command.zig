@@ -17,7 +17,7 @@ pub const Options = struct {
     }
 };
 
-pub const Args = struct {
+pub const Positionals = struct {
     advanced: ?struct {
         branch: [1][]u8 = undefined,
         target: ?[1][]u8 = .{@constCast("main")},
@@ -31,18 +31,21 @@ pub const NewCommand = struct {
     //  -h, --help
     pub fn run(self: NewCommand, alloc: Allocator) !u8 {
         _ = self;
-        var args: Args = .{};
+        var positionals: Positionals = .{};
         const options: Options = .{};
         _ = options;
 
-        const cli_args = try std.process.argsAlloc(alloc);
-        defer std.process.argsFree(alloc, cli_args);
-        var cli_struct = try command.splitCliArgs(alloc, cli_args);
+        const args = try std.process.argsAlloc(alloc);
+        defer std.process.argsFree(alloc, args);
+
+        var cli_struct = try command.splitArgs(alloc, args);
         defer cli_struct.@"0".deinit(alloc);
         defer cli_struct.@"1".deinit(alloc);
+
         std.debug.print("{any}", .{cli_struct});
-        try command.parseArgs(Args, alloc, &args, cli_args);
-        if (args.advanced) |details| {
+
+        try command.parsePositionals(Positionals, alloc, &positionals, args);
+        if (positionals.advanced) |details| {
             std.debug.print("{s} {s}\n", .{ details.branch[0], details.target.?[0] });
         }
         return 0;

@@ -108,7 +108,9 @@ const ArgDeserializer = struct {
     }
 };
 
-pub fn splitArgs(alloc: Allocator, cli_args: [][:0]u8) !struct { std.ArrayListUnmanaged([]u8), std.ArrayListUnmanaged([]u8) } {
+pub fn splitArgs(alloc: Allocator, cli_args: [][:0]u8, comptime P: anytype, comptime O: anytype) !struct { std.ArrayListUnmanaged([]u8), std.ArrayListUnmanaged([]u8) } {
+    _ = P;
+    _ = O;
     var positionals: std.ArrayListUnmanaged([]u8) = .empty;
     var options: std.ArrayListUnmanaged([]u8) = .empty;
     for (cli_args, 0..) |arg, index| {

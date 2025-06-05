@@ -30,7 +30,6 @@ pub const Command = union(enum) {
 const ArgDeserializer = struct {
     args: [][:0]u8,
     argIndex: usize,
-    alloc: Allocator,
 
     fn readInt(self: *ArgDeserializer, comptime T: anytype) !T {
         if (self.args.len <= self.argIndex) {
@@ -47,9 +46,42 @@ const ArgDeserializer = struct {
         return dupe;
     }
 
+    fn readArray(self: *ArgDeserializer, comptime T: anytype) !T {
+        const arrayLength = @typeInfo(T).array.len;
+        if (self.argIndex + arrayLength > self.args.len) {
+            return Error.MissingArgument;
+        }
+        const to = self.argIndex + arrayLength;
+        var dupe: T = undefined;
+        var dupeIndex: usize = 0;
+        while (self.argIndex < to) : ({
+            self.argIndex += 1;
+            dupeIndex += 1;
+        }) {
+            dupe[dupeIndex] = self.args[self.argIndex];
+        }
+        return dupe;
+    }
+
     fn readBool(self: *ArgDeserializer, comptime T: anytype) T {
         self.argIndex += 1;
         return true;
+    }
+
+    fn readOptional(self: *ArgDeserializer, comptime T: anytype, comptime P: anytype, fname: [:0]const u8) !T {
+        if (self.argIndex >= self.args.len) {
+            inline for (@typeInfo(P).@"struct".fields) |field| {
+                if (std.mem.eql(u8, field.name, fname)) {
+                    if (field.defaultValue()) |val| {
+                        return val;
+                    } else {
+                        return undefined;
+                    }
+                }
+            }
+            return undefined;
+        }
+        return try self.read(@typeInfo(T).optional.child, T, fname);
     }
 
     fn readStruct(self: *ArgDeserializer, comptime T: anytype) !T {
@@ -57,17 +89,19 @@ const ArgDeserializer = struct {
 
         var item: T = undefined;
         inline for (fields) |field| {
-            @field(item, field.name) = try self.read(field.type);
+            @field(item, field.name) = try self.read(field.type, T, field.name);
         }
         return item;
     }
 
-    pub fn read(self: *ArgDeserializer, comptime T: anytype) !T {
+    pub fn read(self: *ArgDeserializer, comptime T: anytype, comptime P: anytype, fname: [:0]const u8) !T {
         return switch (@typeInfo(T)) {
             .int => try self.readInt(T),
             .@"struct" => self.readStruct(T),
             .bool => self.readBool(T),
             .pointer => self.readPointer(T),
+            .array => self.readArray(T),
+            .optional => self.readOptional(T, P, fname),
             else => |case| @compileLog("unsupported type", case),
         };
     }
@@ -79,44 +113,10 @@ pub fn parseArgs(
     dst: *T,
     args: [][:0]u8,
 ) !void {
-    // eger adam -- ya da - ile baslayan bir arguman gondermisse
-    // optionlarin field ve declerationlarina bakmamiz gerekir
-    // eger declaration ile match olursak calistir ve cik
-    // field ile match olursak kullanicinin gonderdigi value you set et
-    // ve argumanlarda donmeye devam et
-    std.debug.print("hello: {any}\n", .{dst});
-    // inline for (@typeInfo(@FieldType(T, "options")).@"struct".fields) |field| {
-    //     std.debug.print("field name: {s}\n", .{field.name});
-    // }
-    // if (@hasField(@FieldType(T, "options"), "--target")) {
-    //     std.debug.print("Hello I detected\n", .{});
-    // }
-
-    var deserializer = ArgDeserializer{ .args = args, .argIndex = 2, .alloc = alloc };
-    const result = try deserializer.read(T);
-
-    std.debug.print("result: {any}\n", .{result});
-
-    //     while (iter.next()) |arg| {
-    //         if (std.mem.startsWith(u8, arg, "--")) {
-
-    //             // so this command has help capability
-    //             if (@hasDecl(@TypeOf(dst.options), "help")) {
-    //                 if (std.mem.eql(u8, arg, "--help")) {
-    //                     std.debug.print("{s}\n", .{try dst.options.help()});
-    //                     return;
-    //                 }
-    //             }
-    //             if (hasInFieldsOf(@TypeOf(dst.options), arg)) {
-    //                 std.debug.print("found: {d}\n", .{arg});
-    //             }
-    //         } else {}
-    //     }
-    // inline for (@typeInfo(T).@"struct".fields) |field| {
-    //     if (!std.mem.eql(u8, @ptrCast(field.name), "options")) {
-    //         @field(T, "orphan") = "hello";
-    //     }
-    // }
+    _ = alloc;
+    var deserializer = ArgDeserializer{ .args = args, .argIndex = 2 };
+    const result = try deserializer.read(T, undefined, undefined);
+    dst.* = result;
 }
 
 test "parseArgs example options and args" {

@@ -4,7 +4,8 @@ const Allocator = @import("std").mem.Allocator;
 const log = @import("std").log.scoped(".new_command");
 
 pub const Options = struct {
-    orphan: bool = false,
+    @"--orphan": bool = false,
+    //fields: []std.builtin.Type.StructField = undefined,
     pub fn help(self: Options) ![]u8 {
         return self._help();
     }
@@ -17,6 +18,14 @@ pub const Options = struct {
     }
 };
 
+//pub const OptionsSex = struct {
+//    fields: []const std.builtin.Type.StructField = @typeInfo(Options).@"struct".fields,
+//};
+inline fn getFields(comptime T: type) []std.builtin.Type.StructField {
+    comptime var fields: []std.builtin.Type.StructField = undefined;
+    fields = @constCast(@typeInfo(T).@"struct".fields);
+    return fields;
+}
 pub const Positionals = struct {
     advanced: ?struct {
         branch: [1][]u8 = undefined,
@@ -31,14 +40,13 @@ pub const NewCommand = struct {
     //  -h, --help
     pub fn run(self: NewCommand, alloc: Allocator) !u8 {
         _ = self;
+        comptime var option_fields = getFields(Options);
         var positionals: Positionals = .{};
-        const options: Options = .{};
-        _ = options;
-
+        var options: Options = .{};
         const args = try std.process.argsAlloc(alloc);
         defer std.process.argsFree(alloc, args);
 
-        var cli_struct = try command.splitArgs(alloc, args, Positionals, Options);
+        var cli_struct = try command.splitArgs(alloc, args, Positionals, &options, option_fields);
         defer cli_struct.@"0".deinit(alloc);
         defer cli_struct.@"1".deinit(alloc);
 
@@ -48,6 +56,7 @@ pub const NewCommand = struct {
         if (positionals.advanced) |details| {
             std.debug.print("{s} {s}\n", .{ details.branch[0], details.target.?[0] });
         }
+        option_fields = undefined;
         return 0;
     }
 };

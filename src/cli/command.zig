@@ -17,6 +17,12 @@ pub const Error = error{
     UnexpectedArgument,
 };
 
+pub const ArgType = enum {
+    Boolean,
+    NonBoolean,
+    Unsupported,
+};
+
 pub const Command = union(enum) {
     check: CheckCommand,
     new: NewCommand,
@@ -126,13 +132,16 @@ const ArgDeserializer = struct {
 //    //arg is not in positionals nor options
 //    return null;
 //}
-pub fn getFieldByName(opt_fields: []std.builtin.Type.StructField, arg: []u8) bool {
+pub fn getFieldByName(opt_fields: []std.builtin.Type.StructField, arg: []u8) struct { bool, ArgType } {
     inline for (opt_fields) |field| {
         if (std.mem.eql(u8, field.name, arg)) {
-            return true;
+            return .{ true, switch (@typeInfo(field.type)) {
+                .bool => ArgType.Boolean,
+                else => ArgType.NonBoolean,
+            } };
         }
     }
-    return false;
+    return .{ false, ArgType.Unsupported };
 }
 
 pub fn splitArgs(alloc: Allocator, cli_args: [][:0]u8, comptime P: anytype, O: anytype, opt_fields: []std.builtin.Type.StructField) !struct { std.ArrayListUnmanaged([]u8), std.ArrayListUnmanaged([]u8) } {
@@ -142,12 +151,15 @@ pub fn splitArgs(alloc: Allocator, cli_args: [][:0]u8, comptime P: anytype, O: a
     var options: std.ArrayListUnmanaged([]u8) = .empty;
     for (cli_args, 0..) |arg, index| {
         if (std.mem.startsWith(u8, arg, "--")) {
-            if (getFieldByName(opt_fields, arg)) {
+            const exists, const argType = getFieldByName(opt_fields, arg);
+            if (exists) {
+                if (argType == ArgType.Boolean) {
+                    try options.append(alloc, arg);
+                } else if (argType == ArgType.NonBoolean) {}
                 debug("buldum", .{});
             }
         }
         try positionals.append(alloc, arg);
-        try options.append(alloc, arg);
         debug("\n{s} {d}\n", .{ arg, index });
     }
     return .{ options, positionals };

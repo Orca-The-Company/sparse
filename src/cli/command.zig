@@ -107,13 +107,45 @@ const ArgDeserializer = struct {
         };
     }
 };
+//pub fn getFieldByName(alloc: Allocator, comptime T: anytype, field_name: []const u8) ?struct { [:0]const u8, type } {
+//    var fields_list: std.ArrayListUnmanaged(std.builtin.Type.StructField) = .empty;
+//    const fields = @typeInfo(T).@"struct".fields;
+//    for (fields) |field| {
+//        fields_list.append(alloc, field);
+//        //if (std.mem.eql(u8, field_name, field.name)) {
+//        //  return .{ field.name, field.type };
+//        // }
+//
+//    }
+//    for (fields_list) |elem| {
+//        if (std.mem.eql(u8, elem.name, field_name)) {
+//            std.debug.print("did it work field name equal to my name {s}", field_name);
+//            return .{ elem.name, elem.type };
+//        }
+//    }
+//    //arg is not in positionals nor options
+//    return null;
+//}
+pub fn getFieldByName(opt_fields: []std.builtin.Type.StructField, arg: []u8) bool {
+    inline for (opt_fields) |field| {
+        if (std.mem.eql(u8, field.name, arg)) {
+            return true;
+        }
+    }
+    return false;
+}
 
-pub fn splitArgs(alloc: Allocator, cli_args: [][:0]u8, comptime P: anytype, comptime O: anytype) !struct { std.ArrayListUnmanaged([]u8), std.ArrayListUnmanaged([]u8) } {
+pub fn splitArgs(alloc: Allocator, cli_args: [][:0]u8, comptime P: anytype, O: anytype, opt_fields: []std.builtin.Type.StructField) !struct { std.ArrayListUnmanaged([]u8), std.ArrayListUnmanaged([]u8) } {
     _ = P;
     _ = O;
     var positionals: std.ArrayListUnmanaged([]u8) = .empty;
     var options: std.ArrayListUnmanaged([]u8) = .empty;
     for (cli_args, 0..) |arg, index| {
+        if (std.mem.startsWith(u8, arg, "--")) {
+            if (getFieldByName(opt_fields, arg)) {
+                debug("buldum", .{});
+            }
+        }
         try positionals.append(alloc, arg);
         try options.append(alloc, arg);
         debug("\n{s} {d}\n", .{ arg, index });

@@ -16,3 +16,9 @@ sparse merge # merges bottom stack if mergeable and there is no block and update
 sparse update # updates the stack `rebase --update-refs`
 sparse switch [1..n|<stack_name>] # by default switches the last stack or switches to given stack_name
 ```
+
+## Interactions with git
+
+Sparse uses git to handle all git related operations so `git` must be present
+in `PATH`. Please follow the instructions on [git-scm](https://git-scm.com/) to
+install it.

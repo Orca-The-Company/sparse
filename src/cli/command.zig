@@ -144,23 +144,32 @@ pub fn getFieldByName(opt_fields: []std.builtin.Type.StructField, arg: []u8) str
     return .{ false, ArgType.Unsupported };
 }
 
-pub fn splitArgs(alloc: Allocator, cli_args: [][:0]u8, comptime P: anytype, O: anytype, opt_fields: []std.builtin.Type.StructField) !struct { std.ArrayListUnmanaged([]u8), std.ArrayListUnmanaged([]u8) } {
-    _ = P;
-    _ = O;
+pub fn splitArgs(alloc: Allocator, cli_args: [][:0]u8, opt_fields: []std.builtin.Type.StructField) !struct { std.ArrayListUnmanaged([]u8), std.ArrayListUnmanaged([]u8) } {
     var positionals: std.ArrayListUnmanaged([]u8) = .empty;
     var options: std.ArrayListUnmanaged([]u8) = .empty;
-    for (cli_args, 0..) |arg, index| {
-        if (std.mem.startsWith(u8, arg, "--")) {
-            const exists, const argType = getFieldByName(opt_fields, arg);
+    errdefer {
+        positionals.deinit(alloc);
+        options.deinit(alloc);
+    }
+    var index: usize = 2;
+    while (index < cli_args.len) : (index += 1) {
+        if (std.mem.startsWith(u8, cli_args[index], "--")) {
+            const exists, const argType = getFieldByName(opt_fields, cli_args[index]);
             if (exists) {
                 if (argType == ArgType.Boolean) {
-                    try options.append(alloc, arg);
-                } else if (argType == ArgType.NonBoolean) {}
-                debug("buldum", .{});
+                    try options.append(alloc, cli_args[index]);
+                } else if (argType == ArgType.NonBoolean) {
+                    try options.append(alloc, cli_args[index]);
+                    if (index + 1 >= cli_args.len) {
+                        return Error.MissingArgument;
+                    }
+                    index += 1;
+                    try options.append(alloc, cli_args[index]);
+                }
             }
         }
-        try positionals.append(alloc, arg);
-        debug("\n{s} {d}\n", .{ arg, index });
+        try positionals.append(alloc, cli_args[index]);
+        debug("\n{s} {d}\n", .{ cli_args[index], index });
     }
     return .{ options, positionals };
 }

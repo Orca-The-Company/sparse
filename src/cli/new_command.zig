@@ -5,6 +5,7 @@ const log = @import("std").log.scoped(".new_command");
 
 pub const Options = struct {
     @"--orphan": bool = false,
+    @"--bele": usize = 10,
     //fields: []std.builtin.Type.StructField = undefined,
     pub fn help(self: Options) ![]u8 {
         return self._help();
@@ -42,16 +43,19 @@ pub const NewCommand = struct {
         _ = self;
         comptime var option_fields = getFields(Options);
         var positionals: Positionals = .{};
-        var options: Options = .{};
+        // TODO: make it var when parseOptions is implemented
+        const options: Options = .{};
+        _ = options;
         const args = try std.process.argsAlloc(alloc);
         defer std.process.argsFree(alloc, args);
 
-        var cli_struct = try command.splitArgs(alloc, args, Positionals, &options, option_fields);
-        defer cli_struct.@"0".deinit(alloc);
-        defer cli_struct.@"1".deinit(alloc);
+        var cli_options, var cli_positionals = try command.splitArgs(alloc, args, option_fields);
+        defer cli_positionals.deinit(alloc);
+        defer cli_options.deinit(alloc);
 
-        std.debug.print("{any}", .{cli_struct});
-
+        for (cli_options.items) |item| {
+            std.debug.print("item:{s}\n", .{item});
+        }
         try command.parsePositionals(Positionals, alloc, &positionals, args);
         if (positionals.advanced) |details| {
             std.debug.print("{s} {s}\n", .{ details.branch[0], details.target.?[0] });

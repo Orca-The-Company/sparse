@@ -51,6 +51,9 @@ pub fn build(b: *std.Build) !void {
     lib.linkLibC();
 
     lib.linkSystemLibrary("ssl");
+    // lib.linkSystemLibrary("mbedtls");
+    // lib.linkSystemLibrary("llhttp");
+    lib.linkSystemLibrary("pthread");
 
     switch (target.result.os.tag) {
         .driverkit, .ios, .macos, .tvos, .visionos, .watchos => {
@@ -73,10 +76,6 @@ pub fn build(b: *std.Build) !void {
         .preferred_link_mode = .dynamic,
         .search_strategy = .mode_first,
     };
-
-    // lib.linkSystemLibrary("mbedtls");
-    // lib.linkSystemLibrary("llhttp");
-    lib.linkSystemLibrary("pthread");
 
     if (b.systemIntegrationOption("zlib", .{})) {
         lib.linkSystemLibrary2("zlib", dynamic_link_opts);

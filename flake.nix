@@ -23,6 +23,10 @@
         devShells.default = zig-nixpkgs.mkShell {
           packages = [
             zig-nixpkgs.zig
+            # zig-nixpkgs.openssl
+            # zig-nixpkgs.mbedtls
+            # zig-nixpkgs.llhttp
+            zig-nixpkgs.libgit2
           ];
 
           shellHook = ''

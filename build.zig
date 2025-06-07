@@ -24,16 +24,23 @@ pub fn build(b: *std.Build) !void {
         .root_module = lib_mod,
     });
 
-    lib.linkSystemLibrary("git2");
     lib.linkLibC();
 
-    if (b.lazyDependency("libgit2", .{})) |upstream| {
+    lib.linkSystemLibrary("ssl");
+    lib.linkSystemLibrary("pthread");
+    if (b.lazyDependency(
+        "libgit2",
+        .{
+            .target = target,
+            .optimize = optimize,
+            // .@"enable-ssh" = true, // optional ssh support via libssh2
+            // .@"tls-backend" = .openssl, // use openssl instead of mbedtls
+        },
+    )) |libgit| {
         // using zig build system to fetch header files from libgit2
-        lib.installHeadersDirectory(upstream.path("include"), "../../gen", .{
-            .include_extensions = &.{".h"},
-        });
+        lib.linkLibrary(libgit.artifact("git2"));
+        //lib.installLibraryHeaders(libgit.artifact("git2"));
     }
-    // lib.addIncludePath(b.path("gen"));
     lib_mod.addIncludePath(b.path("gen"));
 
     switch (target.result.os.tag) {

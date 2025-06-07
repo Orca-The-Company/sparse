@@ -1,0 +1,19 @@
+.{
+    .name = .libgit2,
+    .version = "1.9.1",
+    .fingerprint = 0x7f005137c8da8152,
+    .minimum_zig_version = "0.14.1",
+    .dependencies = .{
+        .libgit2 = .{
+            .url = "https://github.com/libgit2/libgit2/archive/refs/tags/v1.9.1.tar.gz",
+            .hash = "N-V-__8AAPAkMAHF73yNJSpdsQlf-mNs4jTb0NHpLoiNRzOw",
+            .lazy = true,
+        },
+        .zlib = .{
+            .path = "../zlib",
+            .lazy = true,
+        },
+        .apple_sdk = .{ .path = "../apple-sdk" },
+    },
+    .paths = .{""},
+}

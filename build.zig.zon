@@ -4,12 +4,8 @@
     .fingerprint = 0x2883adb9d90cf982, // Changing this has security and trust implications.
     .minimum_zig_version = "0.14.0",
     .dependencies = .{
+        .libgit2 = .{ .path = "vendored/libgit2" },
         .apple_sdk = .{ .path = "vendored/apple-sdk" },
-        .libgit2 = .{
-            .url = "https://github.com/libgit2/libgit2/archive/refs/tags/v1.9.0.tar.gz",
-            .hash = "N-V-__8AAJbmLwHHxHDWkz0i6WIR6FpNe6tXSLzaPuWtvBBg",
-            .lazy = true,
-        },
     },
 
     .paths = .{

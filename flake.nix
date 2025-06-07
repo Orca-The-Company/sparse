@@ -6,6 +6,8 @@
 
     # 0.14.0
     zig-nixpkgs.url = "github:NixOS/nixpkgs/f6db44a8daa59c40ae41ba6e5823ec77fe0d2124";
+    # 1.9.0
+    # libgit2-nixpkgs.url = "github:NixOS/nixpkgs/f6db44a8daa59c40ae41ba6e5823ec77fe0d2124";
   };
 
   outputs =
@@ -18,15 +20,14 @@
       system:
       let
         zig-nixpkgs = inputs.zig-nixpkgs.legacyPackages.${system};
+        libgit2-nixpkgs = inputs.libgit2-nixpkgs.legacyPackages.${system};
       in
       {
         devShells.default = zig-nixpkgs.mkShell {
           packages = [
             zig-nixpkgs.zig
-            # zig-nixpkgs.openssl
-            # zig-nixpkgs.mbedtls
-            # zig-nixpkgs.llhttp
             zig-nixpkgs.libgit2
+            # libgit2-nixpkgs.libgit2
           ];
 
           shellHook = ''

@@ -22,11 +22,6 @@ pub const Options = struct {
 //pub const OptionsSex = struct {
 //    fields: []const std.builtin.Type.StructField = @typeInfo(Options).@"struct".fields,
 //};
-inline fn getFields(comptime T: type) []std.builtin.Type.StructField {
-    comptime var fields: []std.builtin.Type.StructField = undefined;
-    fields = @constCast(@typeInfo(T).@"struct".fields);
-    return fields;
-}
 pub const Positionals = struct {
     advanced: ?struct {
         branch: [1][]u8 = undefined,
@@ -41,7 +36,7 @@ pub const NewCommand = struct {
     //  -h, --help
     pub fn run(self: NewCommand, alloc: Allocator) !u8 {
         _ = self;
-        comptime var option_fields = getFields(Options);
+        comptime var option_fields = command.getFields(Options);
         var positionals: Positionals = .{};
         // TODO: make it var when parseOptions is implemented
         const options: Options = .{};

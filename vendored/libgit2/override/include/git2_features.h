@@ -14,18 +14,18 @@
 #define GIT_THREADS_PTHREADS 1
 /* #undef GIT_THREADS_WIN32 */
 
-#define GIT_SHA1_BUILTIN 1
-/* #undef GIT_SHA1_OPENSSL */
+/* #define GIT_SHA1_BUILTIN 1 */
+#define GIT_SHA1_OPENSSL 1
 /* #undef GIT_SHA1_OPENSSL_FIPS */
 /* #undef GIT_SHA1_OPENSSL_DYNAMIC */
 /* #undef GIT_SHA1_MBEDTLS */
 /* #undef GIT_SHA1_COMMON_CRYPTO */
 /* #undef GIT_SHA1_WIN32 */
 
-#define GIT_SHA256_BUILTIN 1
+/* #define GIT_SHA256_BUILTIN 1 */
 /* #undef GIT_SHA256_WIN32 */
 //#define GIT_SHA256_COMMON_CRYPTO 1
-/* #undef GIT_SHA256_OPENSSL */
+#define GIT_SHA256_OPENSSL 1
 /* #undef GIT_SHA256_OPENSSL_FIPS */
 /* #undef GIT_SHA256_OPENSSL_DYNAMIC */
 /* #undef GIT_SHA256_MBEDTLS */
@@ -44,9 +44,9 @@
 
 /* #define GIT_REGEX_REGCOMP_L 1 */
 /* #undef GIT_REGEX_REGCOMP */
-#define GIT_REGEX_PCRE 1
+/* #define GIT_REGEX_PCRE 1 */
 /* #undef GIT_REGEX_PCRE2 */
-/* #undef GIT_REGEX_BUILTIN */
+#define GIT_REGEX_BUILTIN 1
 
 /* #undef GIT_SSH */
 /* #undef GIT_SSH_EXEC */

@@ -24,16 +24,13 @@ pub fn build(b: *std.Build) !void {
         .root_module = lib_mod,
     });
 
-    lib.linkSystemLibrary("git2");
     lib.linkLibC();
 
     if (b.lazyDependency("libgit2", .{})) |upstream| {
         // using zig build system to fetch header files from libgit2
-        lib.installHeadersDirectory(upstream.path("include"), "../../gen", .{
-            .include_extensions = &.{".h"},
-        });
+        lib.linkLibrary(upstream.artifact("git2"));
+        lib.installLibraryHeaders(upstream.artifact("git2"));
     }
-    // lib.addIncludePath(b.path("gen"));
     lib_mod.addIncludePath(b.path("gen"));
 
     switch (target.result.os.tag) {

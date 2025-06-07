@@ -33,6 +33,11 @@ pub const Command = union(enum) {
         }
     }
 };
+pub inline fn getFields(comptime T: type) []std.builtin.Type.StructField {
+    comptime var fields: []std.builtin.Type.StructField = undefined;
+    fields = @constCast(@typeInfo(T).@"struct".fields);
+    return fields;
+}
 
 const ArgDeserializer = struct {
     args: [][:0]u8,

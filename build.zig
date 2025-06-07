@@ -27,6 +27,15 @@ pub fn build(b: *std.Build) !void {
     lib.linkSystemLibrary("git2");
     lib.linkLibC();
 
+    if (b.lazyDependency("libgit2", .{})) |upstream| {
+        // using zig build system to fetch header files from libgit2
+        lib.installHeadersDirectory(upstream.path("include"), "../../gen", .{
+            .include_extensions = &.{".h"},
+        });
+    }
+    // lib.addIncludePath(b.path("gen"));
+    lib_mod.addIncludePath(b.path("gen"));
+
     switch (target.result.os.tag) {
         .driverkit, .ios, .macos, .tvos, .visionos, .watchos => {
             const apple_sdk = @import("apple_sdk");

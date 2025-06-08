@@ -28,6 +28,24 @@ pub fn add(a: i32, b: i32) !i32 {
     }
     std.debug.print("====\n", .{});
 
+    //using ref iterator
+    var ref_iterator = try LibGit.GitReferenceIterator.create(repo);
+    defer ref_iterator.free();
+    std.debug.print("Refs Iter\n====\n", .{});
+    while (try ref_iterator.next()) |r| {
+        std.debug.print("{s}\n", .{r.name()});
+    }
+    std.debug.print("====\n", .{});
+
+    const glob = "*heads*";
+    var ref_glob_iter = try LibGit.GitReferenceIterator.fromGlob(glob, repo);
+    defer ref_glob_iter.free();
+    std.debug.print("Refs Iter(glob: {s})\n====\n", .{glob});
+    while (try ref_glob_iter.next()) |r| {
+        std.debug.print("{s}\n", .{r.name()});
+    }
+    std.debug.print("====\n", .{});
+
     std.debug.print("{any} {s} {any} {any}", .{ repo.isEmpty(), repo.path(), repo.state(), ref.value });
     return a + b;
 }

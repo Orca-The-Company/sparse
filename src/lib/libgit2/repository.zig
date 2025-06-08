@@ -30,7 +30,9 @@ pub const GitRepository = struct {
         return repository;
     }
     pub fn free(self: GitRepository) void {
-        c.git_repository_free(self.value);
+        if (self.value) |val| {
+            c.git_repository_free(val);
+        }
     }
     pub fn isEmpty(self: GitRepository) !bool {
         const res: c_int = c.git_repository_is_empty(self.value);

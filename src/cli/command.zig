@@ -42,12 +42,15 @@ pub inline fn getFields(comptime T: type) []std.builtin.Type.StructField {
 const ArgDeserializer = struct {
     args: [][:0]u8,
     argIndex: usize,
+    parsing_options: bool = false,
 
     fn readInt(self: *ArgDeserializer, comptime T: anytype) !T {
         if (self.args.len <= self.argIndex) {
             return Error.MissingArgument;
         }
-        self.argIndex += 1;
+        if (self.parsing_options) {
+            self.argIndex += 1;
+        }
         const arg: []const u8 = self.args[self.argIndex];
         self.argIndex += 1;
         return std.fmt.parseInt(T, arg, 10) catch Error.UnexpectedArgument;
@@ -184,6 +187,19 @@ pub fn splitArgs(alloc: Allocator, cli_args: [][:0]u8, opt_fields: []std.builtin
     return .{ options, positionals };
 }
 
+pub fn parseOptions(
+    comptime T: type,
+    alloc: Allocator,
+    dst: *T,
+    args: [][:0]u8,
+) !void {
+    _ = alloc;
+    var deserializer = ArgDeserializer{ .args = args, .argIndex = 0, .parsing_options = true };
+    const result = try deserializer.read(T);
+    std.debug.print("Options: {any}\n", .{result});
+    dst.* = result;
+}
+
 pub fn parsePositionals(
     comptime T: type,
     alloc: Allocator,
@@ -192,7 +208,6 @@ pub fn parsePositionals(
 ) !void {
     _ = alloc;
     var deserializer = ArgDeserializer{ .args = args, .argIndex = 0 };
-    std.debug.print("{any}\n", .{args});
     const result = try deserializer.read(T);
     std.debug.print("Positionals: {any}\n", .{result});
     dst.* = result;

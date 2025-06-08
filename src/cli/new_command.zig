@@ -37,7 +37,7 @@ pub const NewCommand = struct {
     pub fn run(self: NewCommand, alloc: Allocator) !u8 {
         _ = self;
         comptime var option_fields = command.getFields(Options);
-        //   var positionals: Positionals = .{};
+        var positionals: Positionals = .{};
         // TODO: make it var when parseOptions is implemented
         var options: Options = .{};
         const args = try std.process.argsAlloc(alloc);
@@ -50,11 +50,11 @@ pub const NewCommand = struct {
         for (cli_options.items) |item| {
             std.debug.print("item:{s}\n", .{item});
         }
-        //try command.parsePositionals(Positionals, alloc, &positionals, args);
-        try command.parsePositionals(Options, alloc, &options, @ptrCast(cli_options.items));
-        // if (positionals.advanced) |details| {
-        //     std.debug.print("{s} {s}\n", .{ details.branch[0], details.target.?[0] });
-        // }
+        try command.parsePositionals(Positionals, alloc, &positionals, args);
+        try command.parseOptions(Options, alloc, &options, @ptrCast(cli_options.items));
+        if (positionals.advanced) |details| {
+            std.debug.print("{s} {s}\n", .{ details.branch[0], details.target.?[0] });
+        }
         option_fields = undefined;
         return 0;
     }

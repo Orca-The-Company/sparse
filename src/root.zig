@@ -46,6 +46,11 @@ pub fn add(a: i32, b: i32) !i32 {
     }
     std.debug.print("====\n", .{});
 
+    const name1 = "refs/sparse/hello_moto";
+    const name2 = "refs/sparse/*";
+    std.debug.print("is_name_valid({s}): {any}\n", .{ name1, LibGit.GitReference.isNameValid(name1) });
+    std.debug.print("is_name_valid({s}): {any}\n", .{ name2, LibGit.GitReference.isNameValid(name2) });
+
     std.debug.print("{any} {s} {any} {any}", .{ repo.isEmpty(), repo.path(), repo.state(), ref.value });
     return a + b;
 }

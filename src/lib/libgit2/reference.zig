@@ -74,6 +74,23 @@ pub const GitReference = struct {
         return str_array;
     }
 
+    ///Ensure the reference name is well-formed.
+    ///
+    ///Valid reference names must follow one of two patterns:
+    ///
+    ///1- Top-level names must contain only capital letters and underscores, and must begin and end with a letter. (e.g. "HEAD", "ORIG_HEAD").
+    ///2- Names prefixed with "refs/" can be almost anything. You must avoid the characters '~', '^', ':', '
+    ///    ', '?', '[', and '*', and the sequences ".." and "@{" which have special meaning to revparse.
+    pub fn isNameValid(check_name: []const u8) !bool {
+        var is_valid: c_int = undefined;
+
+        const res: c_int = c.git_reference_name_is_valid(&is_valid, @ptrCast(check_name));
+        if (res < 0) {
+            return GitError.UNEXPECTED_ERROR;
+        }
+        return is_valid == 1;
+    }
+
     pub fn free(self: GitReference) void {
         if (self.value) |val| {
             c.git_reference_free(val);

@@ -1,6 +1,7 @@
 const c = @import("c.zig").c;
 const GitError = @import("error.zig").GitError;
 const GitRepository = @import("repository.zig").GitRepository;
+const GitStrArray = @import("types.zig").GitStrArray;
 
 pub const GitReference = struct {
     value: ?*c.git_reference = null,
@@ -17,5 +18,22 @@ pub const GitReference = struct {
         } else {
             return GitError.UNEXPECTED_ERROR;
         }
+    }
+
+    pub fn free(self: GitReference) void {
+        if (self.value) |val| {
+            c.git_reference_free(val);
+        }
+    }
+
+    pub fn list(repo: GitRepository) !GitStrArray {
+        var str_array = GitStrArray{ .value = c.git_strarray{} };
+
+        const res: c_int = c.git_reference_list(&str_array.value.?, repo.value);
+        if (res < 0) {
+            return GitError.UNEXPECTED_ERROR;
+        }
+
+        return str_array;
     }
 };

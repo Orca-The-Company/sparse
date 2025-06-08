@@ -9,11 +9,24 @@ const testing = std.testing;
 pub fn add(a: i32, b: i32) !i32 {
     // var repo: ?*c.git_repository = null;
     // const res: c_int = c.git_repository_open_ext(@ptrCast(&repo), @ptrCast("."), c.GIT_REPOSITORY_OPEN_FROM_ENV, null);
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer std.debug.assert(gpa.deinit() == .ok);
+
+    const allocator = gpa.allocator();
     try LibGit.init();
     defer LibGit.shutdown() catch @panic("Oops something weird is cooking...");
     const repo = try LibGit.GitRepository.open();
     defer repo.free();
     const ref: LibGit.GitReference = try LibGit.GitReference.lookup(repo, "refs/heads/main");
+    defer ref.free();
+
+    var refs = try LibGit.GitReference.list(repo);
+    defer refs.dispose();
+    std.debug.print("Refs\n====\n", .{});
+    for (refs.items(allocator)) |item| {
+        std.debug.print("{s}\n", .{item});
+    }
+    std.debug.print("====\n", .{});
 
     std.debug.print("{any} {s} {any} {any}", .{ repo.isEmpty(), repo.path(), repo.state(), ref.value });
     return a + b;

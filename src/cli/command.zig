@@ -75,25 +75,23 @@ const ArgDeserializer = struct {
         return dupe;
     }
 
-    fn readBool(self: *ArgDeserializer, comptime T: anytype) T {
+    fn readBool(self: *ArgDeserializer, comptime T: anytype) !T {
+        if (self.args.len <= self.argIndex) {
+            return Error.MissingArgument;
+        }
+
         self.argIndex += 1;
         return true;
     }
 
-    fn readOptional(self: *ArgDeserializer, comptime T: anytype, comptime P: anytype, fname: [:0]const u8) !T {
-        if (self.argIndex >= self.args.len) {
-            inline for (@typeInfo(P).@"struct".fields) |field| {
-                if (std.mem.eql(u8, field.name, fname)) {
-                    if (field.defaultValue()) |val| {
-                        return val;
-                    } else {
-                        return undefined;
-                    }
-                }
-            }
-            return undefined;
+    fn readOptional(self: *ArgDeserializer, comptime T: anytype) !T {
+        if (self.argIndex < self.args.len) {
+            const child = @typeInfo(@typeInfo(T).optional.child);
+            return switch (child) {
+                else => try self.read(@typeInfo(T).optional.child),
+            };
         }
-        return try self.read(@typeInfo(T).optional.child, T, fname);
+        return Error.MissingArgument;
     }
 
     fn readStruct(self: *ArgDeserializer, comptime T: anytype) !T {
@@ -101,19 +99,24 @@ const ArgDeserializer = struct {
 
         var item: T = undefined;
         inline for (fields) |field| {
-            @field(item, field.name) = try self.read(field.type, T, field.name);
+            @field(item, field.name) = self.read(field.type) catch |err| val: {
+                if (field.defaultValue()) |default| {
+                    break :val default;
+                }
+                return err;
+            };
         }
         return item;
     }
 
-    pub fn read(self: *ArgDeserializer, comptime T: anytype, comptime P: anytype, fname: [:0]const u8) !T {
+    pub fn read(self: *ArgDeserializer, comptime T: anytype) !T {
         return switch (@typeInfo(T)) {
             .int => try self.readInt(T),
             .@"struct" => self.readStruct(T),
-            .bool => self.readBool(T),
+            .bool => try self.readBool(T),
             .pointer => self.readPointer(T),
             .array => self.readArray(T),
-            .optional => self.readOptional(T, P, fname),
+            .optional => self.readOptional(T),
             else => |case| @compileLog("unsupported type", case),
         };
     }
@@ -187,7 +190,8 @@ pub fn parsePositionals(
 ) !void {
     _ = alloc;
     var deserializer = ArgDeserializer{ .args = args, .argIndex = 2 };
-    const result = try deserializer.read(T, undefined, undefined);
+    const result = try deserializer.read(T);
+    std.debug.print("Positionals: {any}\n", .{result});
     dst.* = result;
 }
 

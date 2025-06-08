@@ -125,25 +125,6 @@ const ArgDeserializer = struct {
         };
     }
 };
-//pub fn getFieldByName(alloc: Allocator, comptime T: anytype, field_name: []const u8) ?struct { [:0]const u8, type } {
-//    var fields_list: std.ArrayListUnmanaged(std.builtin.Type.StructField) = .empty;
-//    const fields = @typeInfo(T).@"struct".fields;
-//    for (fields) |field| {
-//        fields_list.append(alloc, field);
-//        //if (std.mem.eql(u8, field_name, field.name)) {
-//        //  return .{ field.name, field.type };
-//        // }
-//
-//    }
-//    for (fields_list) |elem| {
-//        if (std.mem.eql(u8, elem.name, field_name)) {
-//            std.debug.print("did it work field name equal to my name {s}", field_name);
-//            return .{ elem.name, elem.type };
-//        }
-//    }
-//    //arg is not in positionals nor options
-//    return null;
-//}
 pub fn getFieldByName(opt_fields: []std.builtin.Type.StructField, arg: []u8) struct { bool, ArgType } {
     inline for (opt_fields) |field| {
         if (std.mem.eql(u8, field.name, arg)) {
@@ -184,7 +165,6 @@ pub fn splitArgs(alloc: Allocator, cli_args: [][:0]u8, opt_fields: []std.builtin
         } else {
             try positionals.append(alloc, cli_args[index]);
         }
-        //debug("\n{s} {d}\n", .{ cli_args[index], index });
     }
     return .{ options, positionals };
 }

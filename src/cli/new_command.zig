@@ -6,7 +6,6 @@ const log = @import("std").log.scoped(".new_command");
 pub const Options = struct {
     @"--orphan": bool = false,
     @"--bele": i12 = 10,
-    //fields: []std.builtin.Type.StructField = undefined,
     pub fn help(self: Options) ![]u8 {
         return self._help();
     }
@@ -19,9 +18,6 @@ pub const Options = struct {
     }
 };
 
-//pub const OptionsSex = struct {
-//    fields: []const std.builtin.Type.StructField = @typeInfo(Options).@"struct".fields,
-//};
 pub const Positionals = struct {
     advanced: ?struct {
         branch: [1][]u8 = undefined,

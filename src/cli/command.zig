@@ -104,7 +104,6 @@ const ArgDeserializer = struct {
         var item: T = undefined;
         inline for (fields) |field| {
             @field(item, field.name) = self.read(field.type) catch |err| val: {
-                std.debug.print("error {any}\n", .{err});
                 if (field.defaultValue()) |default| {
                     break :val default;
                 }
@@ -179,9 +178,12 @@ pub fn splitArgs(alloc: Allocator, cli_args: [][:0]u8, opt_fields: []std.builtin
                     index += 1;
                     try options.append(alloc, cli_args[index]);
                 }
+            } else {
+                try positionals.append(alloc, cli_args[index]);
             }
+        } else {
+            try positionals.append(alloc, cli_args[index]);
         }
-        try positionals.append(alloc, cli_args[index]);
         //debug("\n{s} {d}\n", .{ cli_args[index], index });
     }
     return .{ options, positionals };

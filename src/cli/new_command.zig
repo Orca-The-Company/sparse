@@ -27,6 +27,7 @@ pub const Positionals = struct {
         branch: [1][]u8 = undefined,
         target: ?[1][]u8 = .{@constCast("main")},
     } = undefined,
+    @"--hele": bool = false,
 };
 
 pub const NewCommand = struct {
@@ -38,7 +39,6 @@ pub const NewCommand = struct {
         _ = self;
         comptime var option_fields = command.getFields(Options);
         var positionals: Positionals = .{};
-        // TODO: make it var when parseOptions is implemented
         var options: Options = .{};
         const args = try std.process.argsAlloc(alloc);
         defer std.process.argsFree(alloc, args);
@@ -50,7 +50,7 @@ pub const NewCommand = struct {
         for (cli_options.items) |item| {
             std.debug.print("item:{s}\n", .{item});
         }
-        try command.parsePositionals(Positionals, alloc, &positionals, args);
+        try command.parsePositionals(Positionals, alloc, &positionals, @ptrCast(cli_positionals.items));
         try command.parseOptions(Options, alloc, &options, @ptrCast(cli_options.items));
         if (positionals.advanced) |details| {
             std.debug.print("{s} {s}\n", .{ details.branch[0], details.target.?[0] });

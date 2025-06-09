@@ -22,3 +22,5 @@ pub const GitReference = @import("reference.zig").GitReference;
 pub const GitReferenceIterator = @import("reference.zig").GitReferenceIterator;
 pub const GitWorktree = @import("worktree.zig").GitWorktree;
 pub const GitWorktreeAddOptions = @import("worktree.zig").GitWorktreeAddOptions;
+pub const GitBranchType = @import("branch.zig").GitBranchType;
+pub const GitBranch = @import("branch.zig").GitBranch;

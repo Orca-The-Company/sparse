@@ -105,6 +105,7 @@ pub fn add(a: i32, b: i32) !i32 {
     const branch: LibGit.GitBranch = try LibGit.GitBranch.lookup(repo, "main", LibGit.GitBranchType.git_branch_all);
 
     std.debug.print("branch: {s}\n", .{branch.ref.name()});
+    std.debug.print("branch_name: {s}\n", .{try branch.name()});
 
     const revspec: LibGit.GitRevSpec = try LibGit.GitRevSpec.revparse(repo, "origin/git");
     defer revspec.free();

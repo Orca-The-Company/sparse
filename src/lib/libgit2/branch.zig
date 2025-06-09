@@ -5,6 +5,8 @@ pub const GitBranchType = enum(c_uint) {
     git_branch_all = 3,
 };
 
+///
+/// https://libgit2.org/docs/reference/main/branch/index.html
 pub const GitBranch = struct {
     ref: GitReference = undefined,
 
@@ -31,6 +33,24 @@ pub const GitBranch = struct {
             return GitError.UNEXPECTED_ERROR;
         }
         return is_valid == 1;
+    }
+
+    ///
+    /// Get the branch name
+    ///
+    /// Given a reference object, this will check that it really is a branch
+    /// (ie. it lives under "refs/heads/" or "refs/remotes/"), and return the
+    /// branch part of it.
+    ///
+    pub fn name(self: GitBranch) !GitString {
+        var c_string: GitString = undefined;
+        const res: c_int = c.git_branch_name(@ptrCast(&c_string), self.ref.value);
+        if (res == c.GIT_EINVALID) {
+            return GitError.GIT_EINVALID;
+        } else if (res != 0) {
+            return GitError.UNEXPECTED_ERROR;
+        }
+        return c_string;
     }
 };
 

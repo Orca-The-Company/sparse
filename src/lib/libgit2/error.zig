@@ -1,4 +1,5 @@
 pub const GitError = error{
+    GIT_EINVALID,
     GIT_EINVALIDSPEC,
     GIT_ENOTFOUND,
     GIT_EAMBIGUOUS,

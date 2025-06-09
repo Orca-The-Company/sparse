@@ -1,8 +1,4 @@
 const c = @import("c.zig").c;
-const GitError = @import("error.zig").GitError;
-const GitRepository = @import("repository.zig").GitRepository;
-const GitStrArray = @import("types.zig").GitStrArray;
-const GitOID = @import("types.zig").GitOID;
 
 pub const GitReferenceIterator = struct {
     value: ?*c.git_reference_iterator = null,
@@ -138,6 +134,17 @@ pub const GitReference = struct {
         return .{ .value = @constCast(oid) };
     }
 
+    pub fn resolve(self: GitReference) !GitReference {
+        var ref: GitReference = .{};
+
+        const res: c_int = c.git_reference_resolve(&ref.value, self.value);
+        if (res != 0) {
+            return GitError.UNEXPECTED_ERROR;
+        }
+
+        return ref;
+    }
+
     pub fn free(self: GitReference) void {
         if (self.value) |val| {
             c.git_reference_free(val);
@@ -147,3 +154,9 @@ pub const GitReference = struct {
         return c.git_reference_name(self.value);
     }
 };
+
+const GitError = @import("error.zig").GitError;
+const GitRepository = @import("repository.zig").GitRepository;
+const GitStrArray = @import("types.zig").GitStrArray;
+const GitString = @import("types.zig").GitString;
+const GitOID = @import("types.zig").GitOID;

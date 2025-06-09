@@ -109,7 +109,7 @@ pub fn add(a: i32, b: i32) !i32 {
     const revspec: LibGit.GitRevSpec = try LibGit.GitRevSpec.revparse(repo, "origin/git");
     defer revspec.free();
 
-    std.debug.print("revspec.from: {s} revspec.to: {any}\n", .{ revspec.from().?.id().?.str(), revspec.to().? });
+    std.debug.print("revspec.from: {s} revspec.to: {any}\n", .{ revspec.from().?.id().?.str(), revspec.to() });
     // {
     //     const ref: LibGit.GitReference = try LibGit.GitReference.lookup(repo, "refs/heads/main");
     //     defer ref.free();

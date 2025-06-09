@@ -36,10 +36,12 @@ pub const GitRevSpec = struct {
     ///
     pub fn from(self: GitRevSpec) ?GitObject {
         if (self.value) |val| {
-            const object: GitObject = .{
-                .value = val.from,
-            };
-            return object;
+            if (val.from) |val_from| {
+                const object: GitObject = .{
+                    .value = val_from,
+                };
+                return object;
+            }
         }
         return null;
     }
@@ -50,18 +52,20 @@ pub const GitRevSpec = struct {
     ///
     pub fn to(self: GitRevSpec) ?GitObject {
         if (self.value) |val| {
-            const object: GitObject = .{
-                .value = val.to,
-            };
-            return object;
+            if (val.to) |val_to| {
+                const object: GitObject = .{
+                    .value = val_to,
+                };
+                return object;
+            }
         }
         return null;
     }
 
     pub fn free(self: GitRevSpec) void {
         if (self.value) |_| {
-            self.from().?.free();
-            self.to().?.free();
+            if (self.from()) |self_from| self_from.free();
+            if (self.to()) |self_to| self_to.free();
         }
     }
 };

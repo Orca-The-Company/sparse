@@ -56,6 +56,7 @@ pub fn add(a: i32, b: i32) !i32 {
     // ^^ can be used to create a worktree based on an oid
     std.debug.print("ref.target: {any}\n", .{ref.target().?.id()});
     std.debug.print("ref.target: {s}\n", .{ref.target().?.str()});
+    std.debug.print("ref.nameToID: {s}\n", .{(try LibGit.GitReference.nameToID(repo, "refs/heads/main")).?.str()});
 
     std.debug.print("{any} {s} {any} {any}", .{ repo.isEmpty(), repo.path(), repo.state(), ref.value });
     return a + b;

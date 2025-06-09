@@ -12,7 +12,9 @@ pub const GitStrArray = struct {
     pub fn items(self: GitStrArray, alloc: std.mem.Allocator) [][*:0]const u8 {
         _ = alloc;
         if (self.value) |value| {
-            return @ptrCast(value.strings[0..value.count]);
+            if (value.count > 0) {
+                return @ptrCast(value.strings[0..value.count]);
+            }
         }
 
         return &.{};

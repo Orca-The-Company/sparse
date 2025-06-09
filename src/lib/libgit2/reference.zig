@@ -2,6 +2,7 @@ const c = @import("c.zig").c;
 const GitError = @import("error.zig").GitError;
 const GitRepository = @import("repository.zig").GitRepository;
 const GitStrArray = @import("types.zig").GitStrArray;
+const GitOID = @import("types.zig").GitOID;
 
 pub const GitReferenceIterator = struct {
     value: ?*c.git_reference_iterator = null,
@@ -81,6 +82,7 @@ pub const GitReference = struct {
     ///1- Top-level names must contain only capital letters and underscores, and must begin and end with a letter. (e.g. "HEAD", "ORIG_HEAD").
     ///2- Names prefixed with "refs/" can be almost anything. You must avoid the characters '~', '^', ':', '
     ///    ', '?', '[', and '*', and the sequences ".." and "@{" which have special meaning to revparse.
+    ///
     pub fn isNameValid(check_name: []const u8) !bool {
         var is_valid: c_int = undefined;
 
@@ -89,6 +91,16 @@ pub const GitReference = struct {
             return GitError.UNEXPECTED_ERROR;
         }
         return is_valid == 1;
+    }
+
+    pub fn target(self: GitReference) ?GitOID {
+        const oid = c.git_reference_target(self.value);
+
+        if (oid == null) {
+            return null;
+        }
+
+        return .{ .value = @constCast(oid) };
     }
 
     pub fn free(self: GitReference) void {

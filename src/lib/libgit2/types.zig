@@ -18,3 +18,20 @@ pub const GitStrArray = struct {
         return &.{};
     }
 };
+
+pub const GitOID = struct {
+    value: ?*c.git_oid = null,
+
+    pub fn id(self: GitOID) [20]u8 {
+        if (self.value) |value| {
+            return value.id;
+        }
+        return std.mem.zeroes([20]u8);
+    }
+
+    pub fn str(self: GitOID) [*:0]const u8 {
+        return c.git_oid_tostr_s(self.value);
+    }
+};
+
+const GitError = @import("error.zig").GitError;

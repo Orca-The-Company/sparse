@@ -29,11 +29,13 @@ pub const GitRepository = struct {
 
         return repository;
     }
+
     pub fn free(self: GitRepository) void {
         if (self.value) |val| {
             c.git_repository_free(val);
         }
     }
+
     pub fn isEmpty(self: GitRepository) !bool {
         const res: c_int = c.git_repository_is_empty(self.value);
         if (res < 0) {
@@ -44,9 +46,28 @@ pub const GitRepository = struct {
             return true;
         }
     }
+
+    pub fn isBare(self: GitRepository) !bool {
+        const res: c_int = c.git_repository_is_bare(self.value);
+        return res == 1;
+    }
+
+    pub fn isWorktree(self: GitRepository) !bool {
+        const res: c_int = c.git_repository_is_worktree(self.value);
+        return res == 1;
+    }
+
     pub fn path(self: GitRepository) [*:0]const u8 {
         return c.git_repository_path(self.value);
     }
+
+    /// Get the path of the shared common directory for this repository.
+    /// If the repository is bare, it is the root directory for the repository. If the repository is a worktree, it is the parent repo's gitdir. Otherwise, it is the gitdir.
+    /// Use commondir if you want to work with .git and you are using worktrees
+    pub fn commondir(self: GitRepository) [*:0]const u8 {
+        return c.git_repository_commondir(self.value);
+    }
+
     pub fn stateCleanup(self: GitRepository) !void {
         const res: c_int = c.git_repository_state_cleanup(self.value);
         if (res != 0) {

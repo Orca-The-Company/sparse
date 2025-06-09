@@ -50,6 +50,12 @@ pub fn add(a: i32, b: i32) !i32 {
     const name2 = "refs/sparse/*";
     std.debug.print("is_name_valid({s}): {any}\n", .{ name1, LibGit.GitReference.isNameValid(name1) });
     std.debug.print("is_name_valid({s}): {any}\n", .{ name2, LibGit.GitReference.isNameValid(name2) });
+    std.debug.print("repo.path: {s}\n", .{repo.path()});
+    std.debug.print("repo.commondir: {s}\n", .{repo.commondir()});
+    // git worktree add -b test2 .git/sparse/test2 464fea667f9604b9ee40d2b2e1c430ff2780c293
+    // ^^ can be used to create a worktree based on an oid
+    std.debug.print("ref.target: {any}\n", .{ref.target().?.id()});
+    std.debug.print("ref.target: {s}\n", .{ref.target().?.str()});
 
     std.debug.print("{any} {s} {any} {any}", .{ repo.isEmpty(), repo.path(), repo.state(), ref.value });
     return a + b;

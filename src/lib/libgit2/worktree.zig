@@ -21,7 +21,7 @@ pub const GitWorktree = struct {
         return str_array;
     }
 
-    pub fn lookup(repo: GitRepository, name_to_look: [*:0]const u8) !GitWorktree {
+    pub fn lookup(repo: GitRepository, name_to_look: GitString) !GitWorktree {
         var worktree: GitWorktree = .{};
         const res: c_int = c.git_worktree_lookup(&worktree.value, repo.value, name_to_look);
         if (res == 0) {
@@ -35,15 +35,30 @@ pub const GitWorktree = struct {
         }
     }
 
-    pub fn name(self: GitWorktree) [*:0]const u8 {
+    pub fn free(self: GitWorktree) void {
+        c.git_worktree_free(self.value);
+    }
+
+    pub fn name(self: GitWorktree) GitString {
         return c.git_worktree_name(self.value);
     }
 
-    pub fn path(self: GitWorktree) [*:0]const u8 {
+    pub fn path(self: GitWorktree) GitString {
         return c.git_worktree_path(self.value);
+    }
+
+    pub fn lock(self: GitWorktree, reason: GitString) bool {
+        const res: c_int = c.git_worktree_lock(self.value, @ptrCast(reason));
+        return res == 0;
+    }
+
+    pub fn unlock(self: GitWorktree) bool {
+        const res: c_int = c.git_worktree_unlock(self.value);
+        return res == 0;
     }
 };
 
+const GitString = @import("types.zig").GitString;
 const GitStrArray = @import("types.zig").GitStrArray;
 const GitRepository = @import("repository.zig").GitRepository;
 const GitError = @import("error.zig").GitError;

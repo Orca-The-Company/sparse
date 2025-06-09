@@ -1,6 +1,8 @@
 const c = @import("c.zig").c;
 const std = @import("std");
 
+pub const GitString = [*:0]const u8;
+
 pub const GitStrArray = struct {
     value: ?c.git_strarray = null,
 

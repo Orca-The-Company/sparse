@@ -17,6 +17,7 @@ pub fn add(a: i32, b: i32) !i32 {
     defer LibGit.shutdown() catch @panic("Oops something weird is cooking...");
     const repo = try LibGit.GitRepository.open();
     defer repo.free();
+
     const ref: LibGit.GitReference = try LibGit.GitReference.lookup(repo, "refs/heads/main");
     defer ref.free();
 
@@ -60,58 +61,87 @@ pub fn add(a: i32, b: i32) !i32 {
 
     // Worktrees
 
-    var worktrees: LibGit.GitStrArray = try LibGit.GitWorktree.list(repo);
-    std.debug.print("\nWorktrees\n====\n", .{});
-    for (worktrees.items(allocator)) |item| {
-        std.debug.print("{s}\n", .{item});
-    }
-    std.debug.print("====\n", .{});
     {
-        const worktree: ?LibGit.GitWorktree = LibGit.GitWorktree.lookup(repo, "hotfix") catch err: {
-            break :err null;
-        };
-        if (worktree) |val| {
-            defer val.free();
-            std.debug.print("worktree.lookup(hotfix): [name={s}, path={s}]\n", .{ val.name(), val.path() });
-        } else {
-            std.debug.print("worktree.lookup(hotfix): <not_found>\n", .{});
+        var worktrees: LibGit.GitStrArray = try LibGit.GitWorktree.list(repo);
+        std.debug.print("\nWorktrees\n====\n", .{});
+        for (worktrees.items(allocator)) |item| {
+            std.debug.print("{s}\n", .{item});
         }
+        std.debug.print("====\n", .{});
     }
-    {
-        const worktree: ?LibGit.GitWorktree = LibGit.GitWorktree.lookup(repo, "new_feature") catch err: {
-            break :err null;
-        };
-        if (worktree) |val| {
-            defer val.free();
-            std.debug.print("worktree.lookup(new_feature): [name={s}, path={s}]\n", .{ val.name(), val.path() });
-        } else {
-            std.debug.print("worktree.lookup(new_feature): <not_found>\n", .{});
-        }
-    }
-    {
-        const worktree: ?LibGit.GitWorktree = LibGit.GitWorktree.lookup(repo, "hotfix") catch err: {
-            break :err null;
-        };
-        if (worktree) |val| {
-            defer val.free();
-            std.debug.print("\nworktree({s}) locking.. res: {any}\n", .{ val.name(), val.lock("testing bro") });
-            std.debug.print("worktree({s}) unlocking.. res: {any}\n", .{ val.name(), val.unlock() });
-            std.debug.print("worktree({s}) validating.. res: {any}\n", .{ val.name(), val.validate() });
-        }
-    }
+    // {
+    //     const worktree: ?LibGit.GitWorktree = LibGit.GitWorktree.lookup(repo, "hotfix") catch err: {
+    //         break :err null;
+    //     };
+    //     if (worktree) |val| {
+    //         defer val.free();
+    //         std.debug.print("worktree.lookup(hotfix): [name={s}, path={s}]\n", .{ val.name(), val.path() });
+    //     } else {
+    //         std.debug.print("worktree.lookup(hotfix): <not_found>\n", .{});
+    //     }
+    // }
+    // {
+    //     const worktree: ?LibGit.GitWorktree = LibGit.GitWorktree.lookup(repo, "new_feature") catch err: {
+    //         break :err null;
+    //     };
+    //     if (worktree) |val| {
+    //         defer val.free();
+    //         std.debug.print("worktree.lookup(new_feature): [name={s}, path={s}]\n", .{ val.name(), val.path() });
+    //     } else {
+    //         std.debug.print("worktree.lookup(new_feature): <not_found>\n", .{});
+    //     }
+    // }
+    // {
+    //     const worktree: ?LibGit.GitWorktree = LibGit.GitWorktree.lookup(repo, "hotfix") catch err: {
+    //         break :err null;
+    //     };
+    //     if (worktree) |val| {
+    //         defer val.free();
+    //         std.debug.print("\nworktree({s}) locking.. res: {any}\n", .{ val.name(), val.lock("testing bro") });
+    //         std.debug.print("worktree({s}) unlocking.. res: {any}\n", .{ val.name(), val.unlock() });
+    //         std.debug.print("worktree({s}) validating.. res: {any}\n", .{ val.name(), val.validate() });
+    //     }
+    // }
+    const branch: LibGit.GitBranch = try LibGit.GitBranch.lookup(repo, "main", LibGit.GitBranchType.git_branch_all);
 
-    const add_options = try LibGit.GitWorktreeAddOptions.create(.{
-        .checkout_existing = true,
-    });
-    std.debug.print("add_options: {any}\n", .{add_options.value});
-    const path = try std.fmt.allocPrint(allocator, "{s}{s}", .{ repo.commondir(), "sparse/test_worktree" });
-    defer allocator.free(path);
+    std.debug.print("branch: {s}\n", .{branch.ref.name()});
 
-    std.debug.print("path: {s}\n", .{path});
-    const worktree = try LibGit.GitWorktree.addWithOptions(repo, "test_worktree", @ptrCast(path), add_options);
-    defer worktree.free();
+    const revspec: LibGit.GitRevSpec = try LibGit.GitRevSpec.revparse(repo, "origin/git");
+    defer revspec.free();
 
-    std.debug.print("\n\n{any} {s} {any} {any}", .{ repo.isEmpty(), repo.path(), repo.state(), ref.value });
+    std.debug.print("revspec.from: {s} revspec.to: {any}\n", .{ revspec.from().?.id().?.str(), revspec.to().? });
+    // {
+    //     const ref: LibGit.GitReference = try LibGit.GitReference.lookup(repo, "refs/heads/main");
+    //     defer ref.free();
+
+    //     const direct_ref: LibGit.GitReference = try ref.resolve();
+    //     defer direct_ref.free();
+
+    //     std.debug.print("ref: {s}\n", .{ref.name()});
+    //     std.debug.print("direct ref: {s}\n", .{direct_ref.target().?.str()});
+
+    //     const add_options = try LibGit.GitWorktreeAddOptions.create(.{
+    //         .ref = ref,
+    //         .checkout_existing = true,
+    //     });
+    //     std.debug.print("add_options: {any}\n", .{add_options.value});
+
+    //     const path = try std.fmt.allocPrint(allocator, "{s}{s}", .{ repo.commondir(), "sparse/hotfix" });
+    //     defer allocator.free(path);
+    //     std.debug.print("path: {s}\n", .{path});
+
+    //     const worktree = try LibGit.GitWorktree.addWithOptions(repo, "hotfix", @ptrCast(path), add_options);
+    //     defer worktree.free();
+    // }
+    // {
+    //     var worktrees: LibGit.GitStrArray = try LibGit.GitWorktree.list(repo);
+    //     std.debug.print("\nWorktrees\n====\n", .{});
+    //     for (worktrees.items(allocator)) |item| {
+    //         std.debug.print("{s}\n", .{item});
+    //     }
+    //     std.debug.print("====\n", .{});
+    // }
+
     return a + b;
 }
 

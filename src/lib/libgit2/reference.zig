@@ -100,9 +100,8 @@ pub const GitReference = struct {
     /// for rules about valid names.
     ///
     pub fn nameToID(repo: GitRepository, check_name: []const u8) !?GitOID {
-        var oid: GitOID = .{};
-        var c_git_oid: c.git_oid = .{};
-        const res: c_int = c.git_reference_name_to_id(&c_git_oid, repo.value, @ptrCast(check_name));
+        var oid: GitOID = .{ .value = .{} };
+        const res: c_int = c.git_reference_name_to_id(&oid.value.?, repo.value, @ptrCast(check_name));
         if (res == c.GIT_ENOTFOUND) {
             return null;
         } else if (res == c.GIT_EINVALIDSPEC) {
@@ -110,7 +109,6 @@ pub const GitReference = struct {
         } else if (res < 0) {
             return GitError.UNEXPECTED_ERROR;
         }
-        oid.value = &c_git_oid;
         return oid;
     }
 
@@ -131,7 +129,7 @@ pub const GitReference = struct {
             return null;
         }
 
-        return .{ .value = @constCast(oid) };
+        return .{ .value = oid.* };
     }
 
     pub fn resolve(self: GitReference) !GitReference {

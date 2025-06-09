@@ -24,7 +24,7 @@ pub const GitStrArray = struct {
 };
 
 pub const GitOID = struct {
-    value: ?*c.git_oid = null,
+    value: ?c.git_oid = null,
 
     pub fn id(self: GitOID) [20]u8 {
         if (self.value) |value| {
@@ -34,7 +34,10 @@ pub const GitOID = struct {
     }
 
     pub fn str(self: GitOID) [*:0]const u8 {
-        return c.git_oid_tostr_s(self.value);
+        if (self.value) |val| {
+            return c.git_oid_tostr_s(&val);
+        }
+        return c.git_oid_tostr_s(null);
     }
 };
 

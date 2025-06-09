@@ -2,7 +2,7 @@ const c = @import("c.zig").c;
 const GitError = @import("error.zig").GitError;
 
 pub const GitRepositoryState = enum(c_int) {
-    git_repository_state_none,
+    git_repository_state_none = 0,
     git_repository_state_merge,
     git_repository_state_revert,
     git_repository_state_revert_sequence,

@@ -93,6 +93,41 @@ pub const GitReference = struct {
         return is_valid == 1;
     }
 
+    /// Ref: https://libgit2.org/docs/reference/main/refs/git_reference_name_to_id.html
+    /// Lookup a reference by name and resolve immediately to OID.
+    ///
+    /// This function provides a quick way to resolve a reference name straight
+    /// through to the object id that it refers to. This avoids having to allocate
+    /// or free any git_reference objects for simple situations.
+    ///
+    /// The name will be checked for validity. See git_reference_symbolic_create()
+    /// for rules about valid names.
+    ///
+    pub fn nameToID(repo: GitRepository, check_name: []const u8) !?GitOID {
+        var oid: GitOID = .{};
+        var c_git_oid: c.git_oid = .{};
+        const res: c_int = c.git_reference_name_to_id(&c_git_oid, repo.value, @ptrCast(check_name));
+        if (res == c.GIT_ENOTFOUND) {
+            return null;
+        } else if (res == c.GIT_EINVALIDSPEC) {
+            return GitError.GIT_EINVALIDSPEC;
+        } else if (res < 0) {
+            return GitError.UNEXPECTED_ERROR;
+        }
+        oid.value = &c_git_oid;
+        return oid;
+    }
+
+    /// Ref: https://libgit2.org/docs/reference/main/refs/git_reference_target.html
+    /// Get the OID pointed to by a direct reference.
+    ///
+    /// Only available if the reference is direct (i.e. an object id reference,
+    /// not a symbolic one).
+    ///
+    /// To find the OID of a symbolic ref, call git_reference_resolve() and then
+    /// this function (or maybe use git_reference_name_to_id() to directly resolve
+    /// a reference name all the way through to an OID).
+    ///
     pub fn target(self: GitReference) ?GitOID {
         const oid = c.git_reference_target(self.value);
 

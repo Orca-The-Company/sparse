@@ -46,7 +46,7 @@ pub const GitReferenceIterator = struct {
 pub const GitReference = struct {
     value: ?*c.git_reference = null,
 
-    pub fn lookup(repo: GitRepository, name_to_look: [*:0]const u8) !GitReference {
+    pub fn lookup(repo: GitRepository, name_to_look: GitString) !GitReference {
         var ref: GitReference = .{};
         const res: c_int = c.git_reference_lookup(&ref.value, repo.value, name_to_look);
         if (res == 0) {
@@ -148,7 +148,7 @@ pub const GitReference = struct {
             c.git_reference_free(val);
         }
     }
-    pub fn name(self: GitReference) [*:0]const u8 {
+    pub fn name(self: GitReference) GitString {
         return c.git_reference_name(self.value);
     }
 };

@@ -1,5 +1,4 @@
 const c = @import("c.zig").c;
-const GitError = @import("error.zig").GitError;
 
 pub const GitRepositoryState = enum(c_int) {
     git_repository_state_none = 0,
@@ -57,14 +56,14 @@ pub const GitRepository = struct {
         return res == 1;
     }
 
-    pub fn path(self: GitRepository) [*:0]const u8 {
+    pub fn path(self: GitRepository) GitString {
         return c.git_repository_path(self.value);
     }
 
     /// Get the path of the shared common directory for this repository.
     /// If the repository is bare, it is the root directory for the repository. If the repository is a worktree, it is the parent repo's gitdir. Otherwise, it is the gitdir.
     /// Use commondir if you want to work with .git and you are using worktrees
-    pub fn commondir(self: GitRepository) [*:0]const u8 {
+    pub fn commondir(self: GitRepository) GitString {
         return c.git_repository_commondir(self.value);
     }
 
@@ -78,3 +77,6 @@ pub const GitRepository = struct {
         return @enumFromInt(c.git_repository_state(self.value));
     }
 };
+
+const GitError = @import("error.zig").GitError;
+const GitString = @import("types.zig").GitString;

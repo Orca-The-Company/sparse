@@ -68,39 +68,39 @@ pub fn examples() !void {
         }
         std.debug.print("====\n", .{});
     }
-    // {
-    //     const worktree: ?LibGit.GitWorktree = LibGit.GitWorktree.lookup(repo, "hotfix") catch err: {
-    //         break :err null;
-    //     };
-    //     if (worktree) |val| {
-    //         defer val.free();
-    //         std.debug.print("worktree.lookup(hotfix): [name={s}, path={s}]\n", .{ val.name(), val.path() });
-    //     } else {
-    //         std.debug.print("worktree.lookup(hotfix): <not_found>\n", .{});
-    //     }
-    // }
-    // {
-    //     const worktree: ?LibGit.GitWorktree = LibGit.GitWorktree.lookup(repo, "new_feature") catch err: {
-    //         break :err null;
-    //     };
-    //     if (worktree) |val| {
-    //         defer val.free();
-    //         std.debug.print("worktree.lookup(new_feature): [name={s}, path={s}]\n", .{ val.name(), val.path() });
-    //     } else {
-    //         std.debug.print("worktree.lookup(new_feature): <not_found>\n", .{});
-    //     }
-    // }
-    // {
-    //     const worktree: ?LibGit.GitWorktree = LibGit.GitWorktree.lookup(repo, "hotfix") catch err: {
-    //         break :err null;
-    //     };
-    //     if (worktree) |val| {
-    //         defer val.free();
-    //         std.debug.print("\nworktree({s}) locking.. res: {any}\n", .{ val.name(), val.lock("testing bro") });
-    //         std.debug.print("worktree({s}) unlocking.. res: {any}\n", .{ val.name(), val.unlock() });
-    //         std.debug.print("worktree({s}) validating.. res: {any}\n", .{ val.name(), val.validate() });
-    //     }
-    // }
+    {
+        const worktree: ?LibGit.GitWorktree = LibGit.GitWorktree.lookup(repo, "hotfix") catch err: {
+            break :err null;
+        };
+        if (worktree) |val| {
+            defer val.free();
+            std.debug.print("worktree.lookup(hotfix): [name={s}, path={s}]\n", .{ val.name(), val.path() });
+        } else {
+            std.debug.print("worktree.lookup(hotfix): <not_found>\n", .{});
+        }
+    }
+    {
+        const worktree: ?LibGit.GitWorktree = LibGit.GitWorktree.lookup(repo, "new_feature") catch err: {
+            break :err null;
+        };
+        if (worktree) |val| {
+            defer val.free();
+            std.debug.print("worktree.lookup(new_feature): [name={s}, path={s}]\n", .{ val.name(), val.path() });
+        } else {
+            std.debug.print("worktree.lookup(new_feature): <not_found>\n", .{});
+        }
+    }
+    {
+        const worktree: ?LibGit.GitWorktree = LibGit.GitWorktree.lookup(repo, "hotfix") catch err: {
+            break :err null;
+        };
+        if (worktree) |val| {
+            defer val.free();
+            std.debug.print("\nworktree({s}) locking.. res: {any}\n", .{ val.name(), val.lock("testing bro") });
+            std.debug.print("worktree({s}) unlocking.. res: {any}\n", .{ val.name(), val.unlock() });
+            std.debug.print("worktree({s}) validating.. res: {any}\n", .{ val.name(), val.validate() });
+        }
+    }
     const branch: LibGit.GitBranch = try LibGit.GitBranch.lookup(repo, "main", LibGit.GitBranchType.git_branch_all);
 
     std.debug.print("branch: {s}\n", .{branch.ref.name()});

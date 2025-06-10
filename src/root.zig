@@ -142,3 +142,20 @@ pub fn examples() !void {
     //     std.debug.print("====\n", .{});
     // }
 }
+
+pub fn exampleSparseFunctions() !void {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer std.debug.assert(gpa.deinit() == .ok);
+
+    const allocator = gpa.allocator();
+
+    // try running tree
+    const run_result: std.process.Child.RunResult = try std.process.Child.run(.{
+        .allocator = allocator,
+        .argv = &.{ "tree", "./.git/sparse", "-L", "1" },
+    });
+    defer allocator.free(run_result.stderr);
+    defer allocator.free(run_result.stdout);
+    std.debug.print("Return Signal: {any}", .{run_result.term});
+    std.debug.print("Output:\n{s}", .{run_result.stdout});
+}

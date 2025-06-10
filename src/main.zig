@@ -4,6 +4,7 @@
 
 pub fn main() !void {
     _ = try lib.examples();
+    _ = try lib.exampleSparseFunctions();
 
     //try cli.run();
 }

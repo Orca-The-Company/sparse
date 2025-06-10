@@ -103,12 +103,14 @@ const ArgDeserializer = struct {
 
         var item: T = undefined;
         inline for (fields) |field| {
-            @field(item, field.name) = self.read(field.type) catch |err| val: {
-                if (field.defaultValue()) |default| {
-                    break :val default;
-                }
-                return err;
-            };
+            if (!std.mem.eql(u8, field.name, "_options")) {
+                @field(item, field.name) = self.read(field.type) catch |err| val: {
+                    if (field.defaultValue()) |default| {
+                        break :val default;
+                    }
+                    return err;
+                };
+            }
         }
         return item;
     }

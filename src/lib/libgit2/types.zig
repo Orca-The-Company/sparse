@@ -1,7 +1,11 @@
 const c = @import("c.zig").c;
 const std = @import("std");
 
-pub const GitString = [*:0]const u8;
+pub fn cStringToGitString(c_string: [*c]const u8) GitString {
+    return std.mem.span(c_string);
+}
+
+pub const GitString = []const u8;
 
 // TODO: git_buf https://libgit2.org/docs/reference/main/buffer/git_buf.html
 

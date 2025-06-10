@@ -43,18 +43,19 @@ pub const GitBranch = struct {
     /// branch part of it.
     ///
     pub fn name(self: GitBranch) !GitString {
-        var c_string: GitString = undefined;
+        var c_string: [*:0]const u8 = undefined;
         const res: c_int = c.git_branch_name(@ptrCast(&c_string), self.ref.value);
         if (res == c.GIT_EINVALID) {
             return GitError.GIT_EINVALID;
         } else if (res != 0) {
             return GitError.UNEXPECTED_ERROR;
         }
-        return c_string;
+        return cStringToGitString(c_string);
     }
 };
 
 const GitString = @import("types.zig").GitString;
+const cStringToGitString = @import("types.zig").cStringToGitString;
 const GitError = @import("error.zig").GitError;
 const GitReference = @import("reference.zig").GitReference;
 const GitRepository = @import("repository.zig").GitRepository;

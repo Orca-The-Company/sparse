@@ -47,7 +47,7 @@ pub const GitWorktree = struct {
 
     pub fn lookup(repo: GitRepository, name_to_look: GitString) !GitWorktree {
         var worktree: GitWorktree = .{};
-        const res: c_int = c.git_worktree_lookup(&worktree.value, repo.value, name_to_look);
+        const res: c_int = c.git_worktree_lookup(&worktree.value, repo.value, @ptrCast(name_to_look));
         if (res == 0) {
             return worktree;
         } else if (res == c.GIT_ENOTFOUND) {
@@ -106,11 +106,11 @@ pub const GitWorktree = struct {
     }
 
     pub fn name(self: GitWorktree) GitString {
-        return c.git_worktree_name(self.value);
+        return cStringToGitString(c.git_worktree_name(self.value));
     }
 
     pub fn path(self: GitWorktree) GitString {
-        return c.git_worktree_path(self.value);
+        return cStringToGitString(c.git_worktree_path(self.value));
     }
 
     pub fn lock(self: GitWorktree, reason: GitString) bool {
@@ -130,6 +130,7 @@ pub const GitWorktree = struct {
 };
 
 const GitString = @import("types.zig").GitString;
+const cStringToGitString = @import("types.zig").cStringToGitString;
 const GitStrArray = @import("types.zig").GitStrArray;
 const GitRepository = @import("repository.zig").GitRepository;
 const GitReference = @import("reference.zig").GitReference;

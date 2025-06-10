@@ -2,11 +2,10 @@
 //! you are making an executable, the convention is to delete this file and
 //! start with main.zig instead.
 const LibGit = @import("lib/libgit2/libgit2.zig");
-
 const std = @import("std");
-const testing = std.testing;
 
-pub fn add(a: i32, b: i32) !i32 {
+pub fn examples() !void {
+
     // var repo: ?*c.git_repository = null;
     // const res: c_int = c.git_repository_open_ext(@ptrCast(&repo), @ptrCast("."), c.GIT_REPOSITORY_OPEN_FROM_ENV, null);
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -142,10 +141,4 @@ pub fn add(a: i32, b: i32) !i32 {
     //     }
     //     std.debug.print("====\n", .{});
     // }
-
-    return a + b;
-}
-
-test "basic add functionality" {
-    try testing.expect(add(3, 7) == 10);
 }

@@ -9,8 +9,5 @@ pub fn branch(options: struct {
         .allocator = options.allocator,
         .argv = &.{ "git", "branch", "-vva" },
     });
-    defer options.allocator.free(run_result.stderr);
-    defer options.allocator.free(run_result.stdout);
-    std.debug.print("Return Signal: {any}", .{run_result.term});
-    std.debug.print("Output:\n{s}", .{run_result.stdout});
+    return run_result;
 }

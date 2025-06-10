@@ -3,6 +3,8 @@ const std = @import("std");
 
 pub const GitString = [*:0]const u8;
 
+// TODO: git_buf https://libgit2.org/docs/reference/main/buffer/git_buf.html
+
 pub const GitStrArray = struct {
     value: ?c.git_strarray = null,
 

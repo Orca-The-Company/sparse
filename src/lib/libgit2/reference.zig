@@ -48,7 +48,7 @@ pub const GitReference = struct {
 
     pub fn lookup(repo: GitRepository, name_to_look: GitString) !GitReference {
         var ref: GitReference = .{};
-        const res: c_int = c.git_reference_lookup(&ref.value, repo.value, name_to_look);
+        const res: c_int = c.git_reference_lookup(&ref.value, repo.value, @ptrCast(name_to_look));
         if (res == 0) {
             return ref;
         } else if (res == c.GIT_ENOTFOUND) {
@@ -149,7 +149,7 @@ pub const GitReference = struct {
         }
     }
     pub fn name(self: GitReference) GitString {
-        return c.git_reference_name(self.value);
+        return cStringToGitString(c.git_reference_name(self.value));
     }
 };
 
@@ -157,4 +157,5 @@ const GitError = @import("error.zig").GitError;
 const GitRepository = @import("repository.zig").GitRepository;
 const GitStrArray = @import("types.zig").GitStrArray;
 const GitString = @import("types.zig").GitString;
+const cStringToGitString = @import("types.zig").cStringToGitString;
 const GitOID = @import("types.zig").GitOID;

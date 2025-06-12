@@ -106,10 +106,10 @@ pub fn examples() !void {
     std.debug.print("branch: {s}\n", .{branch.ref.name()});
     std.debug.print("branch_name: {s}\n", .{try branch.name()});
 
-    const revspec: LibGit.GitRevSpec = try LibGit.GitRevSpec.revparse(repo, "origin/git");
-    defer revspec.free();
+    // const revspec: LibGit.GitRevSpec = try LibGit.GitRevSpec.revparse(repo, "origin/git");
+    // defer revspec.free();
 
-    std.debug.print("revspec.from: {s} revspec.to: {any}\n", .{ revspec.from().?.id().?.str(), revspec.to() });
+    // std.debug.print("revspec.from: {s} revspec.to: {any}\n", .{ revspec.from().?.id().?.str(), revspec.to() });
     // {
     //     const ref: LibGit.GitReference = try LibGit.GitReference.lookup(repo, "refs/heads/main");
     //     defer ref.free();

@@ -1,6 +1,75 @@
 const std = @import("std");
 const RunResult = std.process.Child.RunResult;
 
+pub const Ref = struct {
+    objectname: []const u8,
+    refname: []const u8,
+    pub fn new(o: struct {
+        alloc: std.mem.Allocator,
+        oname: []const u8,
+        rname: []const u8,
+    }) !Ref {
+        // duping strings since we got them from RunResult which we free before returning
+        const oname = try o.alloc.dupe(u8, o.oname);
+        const rname = try o.alloc.dupe(u8, o.rname);
+
+        return .{
+            .objectname = oname,
+            .refname = rname,
+        };
+    }
+
+    pub fn free(self: Ref, alloc: std.mem.Allocator) void {
+        alloc.free(self.objectname);
+        alloc.free(self.refname);
+    }
+};
+
+/// Simple wrapper around `ArrayListUnmanaged` to handle freeing easily
+/// It holds the list of `Ref`
+pub const Refs = struct {
+    list: std.ArrayListUnmanaged(Ref),
+
+    pub fn new(alloc: std.mem.Allocator) !Refs {
+        return .{
+            .list = try std.ArrayListUnmanaged(Ref).initCapacity(alloc, 4),
+        };
+    }
+
+    pub fn free(self: *Refs, alloc: std.mem.Allocator) void {
+        for (self.list.items) |ref| {
+            ref.free(alloc);
+        }
+        self.list.deinit(alloc);
+    }
+};
+
+pub fn getHeadRef(o: struct {
+    allocator: std.mem.Allocator,
+}) !Ref {
+    const run_result: RunResult = try getBranchRefs(.{
+        .allocator = o.allocator,
+    });
+    defer o.allocator.free(run_result.stdout);
+    defer o.allocator.free(run_result.stderr);
+    var lines = std.mem.splitScalar(u8, run_result.stdout, '\n');
+    const head_line = utils.trimString(lines.first(), .{});
+
+    var iter = std.mem.splitScalar(u8, head_line, ' ');
+    // <objectname> <refname> # is the expected format
+    const objectname = iter.first();
+    const refname = iter.rest();
+    if (std.mem.eql(u8, refname, "HEAD")) {
+        return Ref.new(.{
+            .alloc = o.allocator,
+            .oname = objectname,
+            .rname = refname,
+        });
+    } else {
+        return SparseError.BACKEND_UNABLE_TO_DETERMINE_CURRENT_BRANCH;
+    }
+}
+
 pub fn getBranchRefs(options: struct {
     allocator: std.mem.Allocator,
     withHead: bool = true,
@@ -14,7 +83,7 @@ pub fn getBranchRefs(options: struct {
 /// git rev-parse --symbolic-full-name --glob="refs/sparse/*"
 pub fn getSparseRefs(o: struct {
     allocator: std.mem.Allocator,
-}) !std.ArrayListUnmanaged([]const u8) {
+}) !Refs {
     const refs_result = try @"show-ref"(.{
         .allocator = o.allocator,
     });
@@ -23,12 +92,17 @@ pub fn getSparseRefs(o: struct {
 
     if (refs_result.term.Exited == 0) {
         var lines = std.mem.splitScalar(u8, refs_result.stdout, '\n');
-        var refs = try std.ArrayListUnmanaged([]const u8).initCapacity(o.allocator, lines.rest().len);
+        var refs = try Refs.new(o.allocator);
         while (lines.next()) |l| {
             const line = utils.trimString(l, .{});
             if (std.mem.count(u8, line, "refs/sparse") > 0) {
-                const new_line = try o.allocator.dupe(u8, line);
-                try refs.append(o.allocator, new_line);
+                // <objectname> <refname>
+                var vals = std.mem.splitScalar(u8, line, ' ');
+                try refs.list.append(o.allocator, try Ref.new(.{
+                    .alloc = o.allocator,
+                    .oname = vals.first(),
+                    .rname = vals.rest(),
+                }));
             }
         }
         return refs;
@@ -36,7 +110,6 @@ pub fn getSparseRefs(o: struct {
     return SparseError.BACKEND_UNABLE_TO_GET_REFS;
 }
 
-pub fn @"switch"() void {}
 pub fn branch(options: struct {
     allocator: std.mem.Allocator,
 }) !RunResult {
@@ -76,7 +149,6 @@ fn @"rev-parse"(o: struct {
     };
     const argv = try utils.combine([]const u8, o.allocator, command, o.args);
     defer o.allocator.free(argv);
-    std.debug.print("running {s} ...\n", .{argv});
 
     return try std.process.Child.run(.{
         .allocator = o.allocator,

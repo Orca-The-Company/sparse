@@ -7,10 +7,24 @@ const Feature = @This();
 name: [1]GitString,
 ref: GitString = undefined,
 
-pub fn deinit(self: Feature, allocator: Allocator) void {
+pub fn new(o: struct {
+    alloc: std.mem.Allocator,
+    name: GitString,
+    ref: GitString = undefined,
+}) !Feature {
+    const dup = try o.alloc.dupe(u8, o.name);
+
+    return Feature{
+        .name = .{dup},
+        .ref = try o.alloc.dupe(u8, o.ref),
+    };
+}
+
+pub fn free(self: Feature, allocator: Allocator) void {
     allocator.free(self.ref);
     allocator.free(self.name[0]);
 }
+
 /// Looks for sparse feature in git repository by searching through refs
 /// and if it finds the feature that is same as the HEAD then it returns
 /// the `Feature` otherwise it returns Null.
@@ -28,64 +42,25 @@ pub fn activeFeature(o: struct {
 
     // exited successfully
     if (run_result.term.Exited == 0) {
-        var head_objectname: []const u8 = undefined;
-        var lines = std.mem.splitScalar(u8, run_result.stdout, '\n');
-        const head_line = utils.trimString(lines.first(), .{});
-
-        var iter = std.mem.splitScalar(u8, head_line, ' ');
-        // <objectname> <refname> # is the expected format
-        const objectname = iter.first();
-        const refname = iter.rest();
-        if (std.mem.eql(u8, refname, "HEAD")) {
-            head_objectname = objectname;
-            std.debug.print("found head ref: {s}\n", .{head_objectname});
-        } else {
-            return SparseError.BACKEND_UNABLE_TO_DETERMINE_CURRENT_BRANCH;
-        }
+        const head_ref = try Git.getHeadRef(.{ .allocator = o.allocator });
+        defer head_ref.free(o.allocator);
 
         // now we can search for sparse refs
-
-        var sparse_refs: std.ArrayListUnmanaged([]const u8) = try Git.getSparseRefs(.{
+        var sparse_refs = try Git.getSparseRefs(.{
             .allocator = o.allocator,
         });
-        defer {
-            for (sparse_refs.items) |i| {
-                o.allocator.free(i);
-            }
-            sparse_refs.deinit(o.allocator);
-        }
+        defer sparse_refs.free(o.allocator);
 
-        std.debug.print("sparse refs:\n", .{});
-        for (sparse_refs.items) |ref| {
-            var r_iter = std.mem.splitScalar(u8, ref, ' ');
-            // <objectname> <refname> # is the expected format
-            const ref_objectname = r_iter.first();
-            const ref_name = r_iter.rest();
-            std.debug.print("head: {s} ref: {s}\n", .{ head_objectname, ref_objectname });
-
+        for (sparse_refs.list.items) |ref| {
             // we are in sparse feature
-            if (std.mem.eql(u8, ref_objectname, head_objectname)) {
-                const dup = try o.allocator.dupe(u8, ref_name);
-                return Feature{
-                    .name = .{dup},
-                    .ref = try o.allocator.dupe(u8, ref_objectname),
-                };
+            if (std.mem.eql(u8, ref.objectname, head_ref.objectname)) {
+                return try Feature.new(.{
+                    .alloc = o.allocator,
+                    .name = ref.refname,
+                    .ref = ref.objectname,
+                });
             }
         }
-
-        // while (lines.next()) |l| {
-        //     const line = utils.trimString(l, .{});
-
-        //     var iter = std.mem.splitScalar(u8, line, ' ');
-        //     // <objectname> <refname> # is the expected format
-        //     const objectname = iter.first();
-        //     const refname = iter.rest();
-        //     if (std.mem.eql(u8, refname, "HEAD")) {
-
-        //     }
-
-        //     std.debug.print("objectname: {s} - refname: {s}\n", .{ objectname, refname });
-        // }
     }
 
     return null;

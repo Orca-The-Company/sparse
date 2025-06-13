@@ -158,7 +158,6 @@ pub fn exampleSparseFunctions() !void {
     defer allocator.free(run_result.stdout);
     std.debug.print("Return Signal: {any}", .{run_result.term});
     std.debug.print("Output:\n{s}", .{run_result.stdout});
-    Git.@"switch"();
     const git_branch_result = try Git.branch(.{ .allocator = allocator });
     defer allocator.free(git_branch_result.stderr);
     defer allocator.free(git_branch_result.stdout);

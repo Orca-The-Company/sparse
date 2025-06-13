@@ -30,7 +30,7 @@ pub fn feature(args: struct {
     });
     defer {
         if (f) |_f| {
-            _f.deinit(allocator);
+            _f.free(allocator);
         }
     }
 

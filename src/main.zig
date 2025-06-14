@@ -3,9 +3,6 @@
 //! is to delete this file and start with root.zig instead.
 
 pub fn main() !void {
-    // _ = try lib.examples();
-    // _ = try lib.exampleSparseFunctions();
-
     try cli.run();
 }
 

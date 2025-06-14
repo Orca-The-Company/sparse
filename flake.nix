@@ -27,6 +27,7 @@
           packages = [
             zig-nixpkgs.zig
             zig-nixpkgs.libgit2
+            zig-nixpkgs.tree
             # libgit2-nixpkgs.libgit2
           ];
 

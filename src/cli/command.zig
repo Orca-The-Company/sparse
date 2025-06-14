@@ -196,7 +196,7 @@ test "parseArgs example options and args" {
         }
     };
     const Args = struct {
-        options: Options = .{},
+        _options: Options = .{},
         start: bool = false,
         after: ?bool = undefined,
         new: ?struct {
@@ -211,7 +211,7 @@ test "parseArgs example options and args" {
     try expectEqual(true, args.after);
     try expectEqual(true, args.options.@"--f");
     try expectEqual(true, args.options.@"-a");
-    try expectEqual("dev", args.options.@"--target");
+    try expectEqual("devs", args.options.@"--target");
     try expectEqual(4, args.new.?.files.?.items.len);
     try expectEqual("ddd", args.new.?.files.?.items[3]);
     try expectEqual("b", args.new.?.files.?.items[1]);

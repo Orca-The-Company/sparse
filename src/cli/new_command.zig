@@ -1,7 +1,7 @@
 const std = @import("std");
 const command = @import("command.zig");
 const Allocator = @import("std").mem.Allocator;
-const log = @import("std").log.scoped(".new_command");
+const log = @import("std").log.scoped(.new_command);
 
 pub const Options = struct {
     @"--orphan": ?bool = false,

@@ -1,4 +1,5 @@
 const std = @import("std");
+const log = @import("std").log.scoped(.Git);
 const RunResult = std.process.Child.RunResult;
 
 pub const Ref = struct {
@@ -10,6 +11,7 @@ pub const Ref = struct {
         rname: []const u8,
     }) !Ref {
         // duping strings since we got them from RunResult which we free before returning
+        log.debug("creating Ref:: objectname:{s} refname:{s}\n", .{ o.oname, o.rname });
         const oname = try o.alloc.dupe(u8, o.oname);
         const rname = try o.alloc.dupe(u8, o.rname);
 
@@ -85,14 +87,16 @@ pub fn getBranchRefs(o: struct {
         var refs = try Refs.new(o.allocator);
         while (lines.next()) |l| {
             const line = utils.trimString(l, .{});
-            // <objectname> <refname>
-            var vals = std.mem.splitScalar(u8, line, ' ');
-            const ref = try Ref.new(.{
-                .alloc = o.allocator,
-                .oname = vals.first(),
-                .rname = vals.rest(),
-            });
-            try refs.list.append(o.allocator, ref);
+            if (line.len > 0) {
+                // <objectname> <refname>
+                var vals = std.mem.splitScalar(u8, line, ' ');
+                const ref = try Ref.new(.{
+                    .alloc = o.allocator,
+                    .oname = vals.first(),
+                    .rname = vals.rest(),
+                });
+                try refs.list.append(o.allocator, ref);
+            }
         }
         return refs;
     }

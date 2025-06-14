@@ -21,12 +21,12 @@ pub const Positionals = struct {
 pub const CheckCommand = struct {
     pub fn run(self: CheckCommand, alloc: Allocator) !u8 {
         _ = self;
-        var positionals: Positionals = .{};
+        //       var positionals: Positionals = .{};
 
         const args = try std.process.argsAlloc(alloc);
         defer std.process.argsFree(alloc, args);
 
-        try command.parsePositionals(Positionals, alloc, &positionals, args);
+        //        try command.parsePositionals(Positionals, alloc, &positionals, args);
         return 0;
         // check [options] [<branch>]
         // options:

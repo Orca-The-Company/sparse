@@ -120,7 +120,11 @@ pub fn getSparseRefs(o: struct {
         while (lines.next()) |l| {
             const line = utils.trimString(l, .{});
             // ref format: refs/heads/sparse/<username>/<feature_name>/slice/<slice_name>
-            if (std.mem.count(u8, line, "refs/heads/sparse") > 0) {
+            if (std.mem.count(
+                u8,
+                line,
+                constants.BRANCH_REFS_PREFIX,
+            ) > 0) {
                 // <objectname> <refname>
                 var vals = std.mem.splitScalar(u8, line, ' ');
                 try refs.list.append(o.allocator, try Ref.new(.{
@@ -198,5 +202,6 @@ pub fn @"switch"(o: struct {
     });
 }
 
+const constants = @import("../constants.zig");
 const utils = @import("../utils.zig");
 const SparseError = @import("../sparse.zig").Error;

@@ -76,9 +76,25 @@ pub fn findFeatureByName(o: struct {
 
     // ref format: refs/heads/sparse/<username>/<feature_name>/slice/<slice_name>
     //
-    const with_slice = try std.fmt.allocPrint(o.allocator, "refs/heads/sparse/{s}/{s}/slice/", .{ "havadartalha@gmail.com", o.feature_name });
+    const with_slice = try std.fmt.allocPrint(
+        o.allocator,
+        "{s}/{s}/{s}/slice/",
+        .{
+            constants.BRANCH_REFS_PREFIX,
+            "havadartalha@gmail.com",
+            o.feature_name,
+        },
+    );
     defer o.allocator.free(with_slice);
-    const without_slice = try std.fmt.allocPrint(o.allocator, "refs/heads/sparse/{s}/{s}", .{ "havadartalha@gmail.com", o.feature_name });
+    const without_slice = try std.fmt.allocPrint(
+        o.allocator,
+        "{s}/{s}/{s}",
+        .{
+            constants.BRANCH_REFS_PREFIX,
+            "havadartalha@gmail.com",
+            o.feature_name,
+        },
+    );
     defer o.allocator.free(without_slice);
 
     for (branch_refs.list.items) |ref| {
@@ -110,6 +126,7 @@ pub fn save(self: Feature) !void {
     _ = self;
 }
 
+const constants = @import("constants.zig");
 const Git = @import("system/Git.zig");
 const GitString = @import("libgit2/types.zig").GitString;
 const utils = @import("utils.zig");

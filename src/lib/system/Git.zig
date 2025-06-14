@@ -119,7 +119,8 @@ pub fn getSparseRefs(o: struct {
         var refs = try Refs.new(o.allocator);
         while (lines.next()) |l| {
             const line = utils.trimString(l, .{});
-            if (std.mem.count(u8, line, "refs/sparse") > 0) {
+            // ref format: refs/heads/sparse/<username>/<feature_name>/slice/<slice_name>
+            if (std.mem.count(u8, line, "refs/heads/sparse") > 0) {
                 // <objectname> <refname>
                 var vals = std.mem.splitScalar(u8, line, ' ');
                 try refs.list.append(o.allocator, try Ref.new(.{

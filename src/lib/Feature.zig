@@ -4,7 +4,7 @@ const std = @import("std");
 
 const Feature = @This();
 
-name: [1]GitString,
+name: GitString,
 ref: ?GitString = null,
 start_point: ?GitString = null,
 
@@ -17,7 +17,7 @@ pub fn new(o: struct {
     const dup = try o.alloc.dupe(u8, o.name);
 
     return Feature{
-        .name = .{dup},
+        .name = dup,
         .ref = if (o.ref) |r| try o.alloc.dupe(u8, r) else null,
         .start_point = if (o.start_point) |s| try o.alloc.dupe(u8, s) else null,
     };
@@ -30,7 +30,7 @@ pub fn free(self: Feature, allocator: Allocator) void {
     if (self.start_point) |s| {
         allocator.free(s);
     }
-    allocator.free(self.name[0]);
+    allocator.free(self.name);
 }
 
 /// Looks for sparse feature in git repository by searching through refs

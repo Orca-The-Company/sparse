@@ -171,4 +171,4 @@ pub fn exampleSparseFunctions() !void {
 // }
 
 const Git = @import("lib/system/Git.zig");
-const Sparse = @import("lib/sparse.zig");
+pub const Sparse = @import("lib/sparse.zig");

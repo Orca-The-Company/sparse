@@ -10,8 +10,9 @@ pub const Ref = struct {
         oname: []const u8,
         rname: []const u8,
     }) !Ref {
+        log.debug("Ref::new:: objectname:{s} refname:{s}", .{ o.oname, o.rname });
+
         // duping strings since we got them from RunResult which we free before returning
-        log.debug("creating Ref:: objectname:{s} refname:{s}\n", .{ o.oname, o.rname });
         const oname = try o.alloc.dupe(u8, o.oname);
         const rname = try o.alloc.dupe(u8, o.rname);
 
@@ -22,6 +23,7 @@ pub const Ref = struct {
     }
 
     pub fn free(self: Ref, alloc: std.mem.Allocator) void {
+        log.debug("Ref::free::", .{});
         alloc.free(self.objectname);
         alloc.free(self.refname);
     }
@@ -33,12 +35,14 @@ pub const Refs = struct {
     list: std.ArrayListUnmanaged(Ref),
 
     pub fn new(alloc: std.mem.Allocator) !Refs {
+        log.debug("Refs::new::", .{});
         return .{
             .list = try std.ArrayListUnmanaged(Ref).initCapacity(alloc, 4),
         };
     }
 
     pub fn free(self: *Refs, alloc: std.mem.Allocator) void {
+        log.debug("Refs::free::", .{});
         for (self.list.items) |ref| {
             ref.free(alloc);
         }
@@ -54,6 +58,7 @@ pub fn getHeadRef(o: struct {
     });
     defer branch_refs.free(o.allocator);
     if (branch_refs.list.items.len == 0) {
+        log.debug("getHeadRef:: unable to determine current branch", .{});
         return SparseError.BACKEND_UNABLE_TO_DETERMINE_CURRENT_BRANCH;
     }
 
@@ -67,6 +72,7 @@ pub fn getHeadRef(o: struct {
             .rname = refname,
         });
     } else {
+        log.debug("getHeadRef:: unable to determine current branch", .{});
         return SparseError.BACKEND_UNABLE_TO_DETERMINE_CURRENT_BRANCH;
     }
 }
@@ -101,6 +107,7 @@ pub fn getBranchRefs(o: struct {
         return refs;
     }
 
+    log.debug("getBranchRefs:: unable to get refs", .{});
     return SparseError.BACKEND_UNABLE_TO_GET_REFS;
 }
 
@@ -136,12 +143,14 @@ pub fn getSparseRefs(o: struct {
         }
         return refs;
     }
+    log.debug("getSparseRefs:: unable to get refs", .{});
     return SparseError.BACKEND_UNABLE_TO_GET_REFS;
 }
 
 pub fn branch(options: struct {
     allocator: std.mem.Allocator,
 }) !RunResult {
+    log.debug("branch::", .{});
     const run_result: RunResult = try std.process.Child.run(.{
         .allocator = options.allocator,
         .argv = &.{ "git", "branch", "-vva" },
@@ -153,6 +162,7 @@ fn @"show-ref"(options: struct {
     allocator: std.mem.Allocator,
     args: []const []const u8 = &.{},
 }) !RunResult {
+    log.debug("show-ref:: args:{s}", .{options.args});
     const command: []const []const u8 = &.{
         "git",
         "show-ref",
@@ -172,6 +182,7 @@ fn @"rev-parse"(o: struct {
     allocator: std.mem.Allocator,
     args: []const []const u8,
 }) !RunResult {
+    log.debug("rev-parse:: args:{s}", .{o.args});
     const command: []const []const u8 = &.{
         "git",
         "rev-parse",
@@ -189,6 +200,7 @@ pub fn @"switch"(o: struct {
     allocator: std.mem.Allocator,
     args: []const []const u8,
 }) !RunResult {
+    log.debug("switch:: args:{s}", .{o.args});
     const command: []const []const u8 = &.{
         "git",
         "switch",

@@ -21,8 +21,7 @@ pub fn feature(
     defer std.debug.assert(gpa.deinit() == .ok);
     const allocator = gpa.allocator();
 
-    std.debug.print("\n===sparse-feature===\n\n", .{});
-    log.debug("opts: feature:name:{s} slice:{s} --to:{s}\n", .{
+    log.debug("feature:: feature_name:{s} slice_name:{s} target:{s}", .{
         feature_name,
         if (slice_name) |s| s else "null",
         target,
@@ -89,8 +88,6 @@ pub fn feature(
             .slice = _slice,
         });
     }
-
-    std.debug.print("\n====================\n", .{});
 }
 
 pub fn slice(opts: struct {}) !void {

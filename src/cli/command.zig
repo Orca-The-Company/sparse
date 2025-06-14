@@ -40,7 +40,7 @@ pub inline fn getFields(comptime T: type) []std.builtin.Type.StructField {
 }
 
 const ArgDeserializer = struct {
-    args: [][:0]u8,
+    args: [][]u8,
     argIndex: usize,
     parsing_options: bool = false,
 
@@ -59,7 +59,7 @@ const ArgDeserializer = struct {
     fn readPointer(self: *ArgDeserializer, comptime T: anytype) !T {
         const dupe = self.args[self.argIndex..];
         self.argIndex = self.args.len;
-        return dupe;
+        return @ptrCast(dupe);
     }
 
     fn readArray(self: *ArgDeserializer, comptime T: anytype) !T {
@@ -103,7 +103,7 @@ const ArgDeserializer = struct {
 
         var item: T = undefined;
         inline for (fields) |field| {
-            if (!std.mem.eql(u8, field.name, "_options")) {
+            if (std.mem.eql(u8, field.name, "_options") == false) {
                 @field(item, field.name) = self.read(field.type) catch |err| val: {
                     if (field.defaultValue()) |default| {
                         break :val default;
@@ -127,74 +127,58 @@ const ArgDeserializer = struct {
         };
     }
 };
-pub fn getFieldByName(opt_fields: []std.builtin.Type.StructField, arg: []u8) struct { bool, ArgType } {
-    inline for (opt_fields) |field| {
-        if (std.mem.eql(u8, field.name, arg)) {
-            return .{ true, switch (@typeInfo(field.type)) {
-                .bool => ArgType.Boolean,
-                else => ArgType.NonBoolean,
-            } };
-        }
-    }
-    return .{ false, ArgType.Unsupported };
-}
-
-pub fn splitArgs(alloc: Allocator, cli_args: [][:0]u8, opt_fields: []std.builtin.Type.StructField) !struct { std.ArrayListUnmanaged([]u8), std.ArrayListUnmanaged([]u8) } {
-    var positionals: std.ArrayListUnmanaged([]u8) = .empty;
-    var options: std.ArrayListUnmanaged([]u8) = .empty;
-    errdefer {
-        positionals.deinit(alloc);
-        options.deinit(alloc);
-    }
-    var index: usize = 2;
-    while (index < cli_args.len) : (index += 1) {
-        if (std.mem.startsWith(u8, cli_args[index], "--")) {
-            const exists, const argType = getFieldByName(opt_fields, cli_args[index]);
-            if (exists) {
-                if (argType == ArgType.Boolean) {
-                    try options.append(alloc, cli_args[index]);
-                } else if (argType == ArgType.NonBoolean) {
-                    try options.append(alloc, cli_args[index]);
-                    if (index + 1 >= cli_args.len) {
-                        return Error.MissingArgument;
-                    }
-                    index += 1;
-                    try options.append(alloc, cli_args[index]);
-                }
-            } else {
-                try positionals.append(alloc, cli_args[index]);
-            }
-        } else {
-            try positionals.append(alloc, cli_args[index]);
-        }
-    }
-    return .{ options, positionals };
-}
 
 pub fn parseOptions(
     comptime T: type,
     alloc: Allocator,
     dst: *T,
     args: [][:0]u8,
-) !void {
-    _ = alloc;
-    var deserializer = ArgDeserializer{ .args = args, .argIndex = 0, .parsing_options = true };
-    const result = try deserializer.read(T);
-    std.debug.print("Options: {any}\n", .{result});
-    dst.* = result;
+) ![][]u8 {
+    const fields = @typeInfo(T).@"struct".fields;
+
+    var positionals: std.ArrayListUnmanaged([]u8) = .empty;
+    defer positionals.deinit(alloc);
+    var item: T = .{};
+    var index: usize = 0;
+    while (index < args.len) : (index += 1) {
+        if (std.mem.startsWith(u8, args[index], "--")) {
+            inline for (fields) |field| {
+                if (std.mem.eql(u8, field.name, args[index])) {
+                    switch (@typeInfo(field.type)) {
+                        .bool => {
+                            @field(item, field.name) = !field.defaultValue().?;
+                        },
+                        else => {
+                            if (index + 1 >= args.len) {
+                                return Error.MissingArgument;
+                            }
+                            index += 1;
+                            @field(item, field.name) = args[index];
+                        },
+                    }
+                }
+            }
+        } else {
+            try positionals.append(alloc, args[index]);
+        }
+    }
+
+    dst.* = item;
+    return positionals.toOwnedSlice(alloc);
 }
 
 pub fn parsePositionals(
     comptime T: type,
     alloc: Allocator,
     dst: *T,
-    args: [][:0]u8,
+    args: [][]u8,
 ) !void {
     _ = alloc;
-    var deserializer = ArgDeserializer{ .args = args, .argIndex = 0 };
+    const options = dst.*._options;
+    var deserializer = ArgDeserializer{ .args = args, .argIndex = 2 };
     const result = try deserializer.read(T);
-    std.debug.print("Positionals: {any}\n", .{result});
     dst.* = result;
+    dst.*._options = options;
 }
 
 test "parseArgs example options and args" {

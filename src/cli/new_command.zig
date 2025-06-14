@@ -4,8 +4,9 @@ const Allocator = @import("std").mem.Allocator;
 const log = @import("std").log.scoped(".new_command");
 
 pub const Options = struct {
-    @"--orphan": bool = false,
-    @"--bele": i12 = 10,
+    @"--orphan": ?bool = false,
+    @"--bele": ?i12 = 10,
+    @"--test": ?bool = false,
     pub fn help(self: Options) ![]u8 {
         return self._help();
     }
@@ -23,7 +24,11 @@ pub const Positionals = struct {
         branch: [1][]u8 = undefined,
         target: ?[1][]u8 = .{@constCast("main")},
     } = undefined,
-    @"--hele": bool = false,
+    _options: struct {
+        @"--to": []const u8 = "main",
+        @"--hello": bool = false,
+        @"--from": []const u8 = "bla",
+    } = .{},
 };
 
 pub const NewCommand = struct {
@@ -33,25 +38,22 @@ pub const NewCommand = struct {
     //  -h, --help
     pub fn run(self: NewCommand, alloc: Allocator) !u8 {
         _ = self;
-        comptime var option_fields = command.getFields(Options);
         var positionals: Positionals = .{};
-        var options: Options = .{};
         const args = try std.process.argsAlloc(alloc);
         defer std.process.argsFree(alloc, args);
 
-        var cli_options, var cli_positionals = try command.splitArgs(alloc, args, option_fields);
-        defer cli_positionals.deinit(alloc);
-        defer cli_options.deinit(alloc);
+        const cli_positionals = try command.parseOptions(@TypeOf(positionals._options), alloc, &positionals._options, args);
+        defer alloc.free(cli_positionals);
+        try command.parsePositionals(Positionals, alloc, &positionals, cli_positionals);
+        //if (positionals.advanced) |details| {
+        //    std.debug.print("{s} {s}\n", .{ details.branch[0], details.target.?[0] });
+        //}
+        std.debug.print("branch {s}\n", .{positionals.advanced.?.branch});
+        std.debug.print("target {s}\n", .{positionals.advanced.?.target.?});
+        std.debug.print("options {s}\n", .{positionals._options.@"--to"});
+        std.debug.print("options {any}\n", .{positionals._options.@"--hello"});
+        std.debug.print("options {s}\n", .{positionals._options.@"--from"});
 
-        for (cli_options.items) |item| {
-            std.debug.print("item:{s}\n", .{item});
-        }
-        try command.parsePositionals(Positionals, alloc, &positionals, @ptrCast(cli_positionals.items));
-        try command.parseOptions(Options, alloc, &options, @ptrCast(cli_options.items));
-        if (positionals.advanced) |details| {
-            std.debug.print("{s} {s}\n", .{ details.branch[0], details.target.?[0] });
-        }
-        option_fields = undefined;
         return 0;
     }
 };

@@ -1,8 +1,6 @@
 const std = @import("std");
 const debug = std.debug.print;
 const Allocator = std.mem.Allocator;
-const CheckCommand = @import("check_command.zig").CheckCommand;
-const NewCommand = @import("new_command.zig").NewCommand;
 
 pub const CString = [*:0]const u8;
 pub const ArgString = [:0]u8;
@@ -24,8 +22,7 @@ pub const ArgType = enum {
 };
 
 pub const Command = union(enum) {
-    check: CheckCommand,
-    new: NewCommand,
+    feature: FeatureCommand,
 
     pub fn run(self: Command, alloc: Allocator) !u8 {
         switch (self) {
@@ -33,11 +30,6 @@ pub const Command = union(enum) {
         }
     }
 };
-pub inline fn getFields(comptime T: type) []std.builtin.Type.StructField {
-    comptime var fields: []std.builtin.Type.StructField = undefined;
-    fields = @constCast(@typeInfo(T).@"struct".fields);
-    return fields;
-}
 
 const ArgDeserializer = struct {
     args: [][]u8,
@@ -218,3 +210,5 @@ test "parseArgs example options and args" {
     try expectEqual("c", args.new.?.files.?.items[2]);
     try expectEqual("a", args.new.?.files.?.items[0]);
 }
+
+const FeatureCommand = @import("feature_command.zig").FeatureCommand;

@@ -10,6 +10,7 @@ fn parse(args: [][:0]u8) !Command {
     if (args.len < 2) {
         return CommandError.UnknownCommand;
     }
+
     inline for (my_commands) |c| {
         if (std.mem.eql(u8, args[1], c.name)) {
             return @field(Command, c.name);

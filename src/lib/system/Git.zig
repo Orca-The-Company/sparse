@@ -47,18 +47,17 @@ pub const Refs = struct {
 pub fn getHeadRef(o: struct {
     allocator: std.mem.Allocator,
 }) !Ref {
-    const run_result: RunResult = try getBranchRefs(.{
+    var branch_refs = try getBranchRefs(.{
         .allocator = o.allocator,
     });
-    defer o.allocator.free(run_result.stdout);
-    defer o.allocator.free(run_result.stderr);
-    var lines = std.mem.splitScalar(u8, run_result.stdout, '\n');
-    const head_line = utils.trimString(lines.first(), .{});
+    defer branch_refs.free(o.allocator);
+    if (branch_refs.list.items.len == 0) {
+        return SparseError.BACKEND_UNABLE_TO_DETERMINE_CURRENT_BRANCH;
+    }
 
-    var iter = std.mem.splitScalar(u8, head_line, ' ');
     // <objectname> <refname> # is the expected format
-    const objectname = iter.first();
-    const refname = iter.rest();
+    const objectname = branch_refs.list.items[0].objectname;
+    const refname = branch_refs.list.items[0].refname;
     if (std.mem.eql(u8, refname, "HEAD")) {
         return Ref.new(.{
             .alloc = o.allocator,
@@ -70,14 +69,35 @@ pub fn getHeadRef(o: struct {
     }
 }
 
-pub fn getBranchRefs(options: struct {
+pub fn getBranchRefs(o: struct {
     allocator: std.mem.Allocator,
     withHead: bool = true,
-}) !RunResult {
-    return try @"show-ref"(.{
-        .allocator = options.allocator,
-        .args = &.{ "--branches", (if (options.withHead) "--head" else "") },
+}) !Refs {
+    const refs_result = try @"show-ref"(.{
+        .allocator = o.allocator,
+        .args = &.{ "--branches", (if (o.withHead) "--head" else "") },
     });
+    defer o.allocator.free(refs_result.stdout);
+    defer o.allocator.free(refs_result.stderr);
+
+    if (refs_result.term.Exited == 0) {
+        var lines = std.mem.splitScalar(u8, refs_result.stdout, '\n');
+        var refs = try Refs.new(o.allocator);
+        while (lines.next()) |l| {
+            const line = utils.trimString(l, .{});
+            // <objectname> <refname>
+            var vals = std.mem.splitScalar(u8, line, ' ');
+            const ref = try Ref.new(.{
+                .alloc = o.allocator,
+                .oname = vals.first(),
+                .rname = vals.rest(),
+            });
+            try refs.list.append(o.allocator, ref);
+        }
+        return refs;
+    }
+
+    return SparseError.BACKEND_UNABLE_TO_GET_REFS;
 }
 
 /// git rev-parse --symbolic-full-name --glob="refs/sparse/*"

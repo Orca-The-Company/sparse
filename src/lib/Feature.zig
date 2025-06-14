@@ -5,23 +5,25 @@ const std = @import("std");
 const Feature = @This();
 
 name: [1]GitString,
-ref: GitString = undefined,
+ref: ?GitString = null,
 
 pub fn new(o: struct {
     alloc: std.mem.Allocator,
     name: GitString,
-    ref: GitString = undefined,
+    ref: ?GitString = null,
 }) !Feature {
     const dup = try o.alloc.dupe(u8, o.name);
 
     return Feature{
         .name = .{dup},
-        .ref = try o.alloc.dupe(u8, o.ref),
+        .ref = if (o.ref) |r| try o.alloc.dupe(u8, r) else null,
     };
 }
 
 pub fn free(self: Feature, allocator: Allocator) void {
-    allocator.free(self.ref);
+    if (self.ref) |r| {
+        allocator.free(r);
+    }
     allocator.free(self.name[0]);
 }
 
@@ -33,37 +35,69 @@ pub fn free(self: Feature, allocator: Allocator) void {
 pub fn activeFeature(o: struct {
     allocator: Allocator,
 }) !?Feature {
-    // get all refs using git
-    const run_result: RunResult = try Git.getBranchRefs(.{
+    const head_ref = try Git.getHeadRef(.{ .allocator = o.allocator });
+    defer head_ref.free(o.allocator);
+
+    // now we can search for sparse refs
+    var sparse_refs = try Git.getSparseRefs(.{
         .allocator = o.allocator,
     });
-    defer o.allocator.free(run_result.stdout);
-    defer o.allocator.free(run_result.stderr);
+    defer sparse_refs.free(o.allocator);
 
-    // exited successfully
-    if (run_result.term.Exited == 0) {
-        const head_ref = try Git.getHeadRef(.{ .allocator = o.allocator });
-        defer head_ref.free(o.allocator);
+    for (sparse_refs.list.items) |ref| {
+        // we are in sparse feature
+        if (std.mem.eql(u8, ref.objectname, head_ref.objectname)) {
+            return try Feature.new(.{
+                .alloc = o.allocator,
+                .name = ref.refname,
+                .ref = ref.objectname,
+            });
+        }
+    }
 
-        // now we can search for sparse refs
-        var sparse_refs = try Git.getSparseRefs(.{
-            .allocator = o.allocator,
-        });
-        defer sparse_refs.free(o.allocator);
+    return null;
+}
 
-        for (sparse_refs.list.items) |ref| {
-            // we are in sparse feature
-            if (std.mem.eql(u8, ref.objectname, head_ref.objectname)) {
+pub fn findFeatureByName(o: struct {
+    allocator: Allocator,
+    feature_name: []const u8,
+}) !?Feature {
+    // get all branch refs using git
+    var branch_refs = try Git.getBranchRefs(.{
+        .allocator = o.allocator,
+    });
+    defer branch_refs.free(o.allocator);
+
+    // ref format: refs/heads/sparse/<username>/<feature_name>/slice/<slice_name>
+    //
+    const with_slice = try std.fmt.allocPrint(o.allocator, "refs/heads/sparse/{s}/{s}/slice/", .{ "havadartalha@gmail.com", o.feature_name });
+    defer o.allocator.free(with_slice);
+    const without_slice = try std.fmt.allocPrint(o.allocator, "refs/heads/sparse/{s}/{s}", .{ "havadartalha@gmail.com", o.feature_name });
+    defer o.allocator.free(without_slice);
+
+    for (branch_refs.list.items) |ref| {
+        if (std.mem.eql(u8, ref.refname, without_slice)) {
+            // found an existing branch check if it has slices
+            if (std.mem.eql(u8, ref.refname, with_slice)) {
                 return try Feature.new(.{
                     .alloc = o.allocator,
                     .name = ref.refname,
                     .ref = ref.objectname,
                 });
+            } else {
+                // this is weird.
+                // lets return an error for now we can think about recovery later
+                return try recoverFeatureWithName();
             }
         }
     }
 
     return null;
+}
+
+pub fn recoverFeatureWithName() !Feature {
+    // TODO: implement recovery logic
+    return SparseError.CORRUPTED_FEATURE;
 }
 
 const Git = @import("system/Git.zig");

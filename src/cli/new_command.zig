@@ -46,8 +46,8 @@ pub const NewCommand = struct {
         for (cli_options.items) |item| {
             std.debug.print("item:{s}\n", .{item});
         }
-        try command.parsePositionals(Positionals, alloc, &positionals, @ptrCast(cli_positionals.items));
         try command.parseOptions(Options, alloc, &options, @ptrCast(cli_options.items));
+        try command.parsePositionals(Positionals, alloc, &positionals, @ptrCast(cli_positionals.items));
         if (positionals.advanced) |details| {
             std.debug.print("{s} {s}\n", .{ details.branch[0], details.target.?[0] });
         }

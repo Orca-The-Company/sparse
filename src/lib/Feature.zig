@@ -6,23 +6,29 @@ const Feature = @This();
 
 name: [1]GitString,
 ref: ?GitString = null,
+start_point: ?GitString = null,
 
 pub fn new(o: struct {
     alloc: std.mem.Allocator,
     name: GitString,
     ref: ?GitString = null,
+    start_point: ?GitString = null,
 }) !Feature {
     const dup = try o.alloc.dupe(u8, o.name);
 
     return Feature{
         .name = .{dup},
         .ref = if (o.ref) |r| try o.alloc.dupe(u8, r) else null,
+        .start_point = if (o.start_point) |s| try o.alloc.dupe(u8, s) else null,
     };
 }
 
 pub fn free(self: Feature, allocator: Allocator) void {
     if (self.ref) |r| {
         allocator.free(r);
+    }
+    if (self.start_point) |s| {
+        allocator.free(s);
     }
     allocator.free(self.name[0]);
 }
@@ -98,6 +104,10 @@ pub fn findFeatureByName(o: struct {
 pub fn recoverFeatureWithName() !Feature {
     // TODO: implement recovery logic
     return SparseError.CORRUPTED_FEATURE;
+}
+
+pub fn save(self: Feature) !void {
+    _ = self;
 }
 
 const Git = @import("system/Git.zig");

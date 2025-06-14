@@ -149,21 +149,17 @@ pub fn exampleSparseFunctions() !void {
 
     const allocator = gpa.allocator();
 
-    // try running tree
-    const run_result: std.process.Child.RunResult = try std.process.Child.run(.{
-        .allocator = allocator,
-        .argv = &.{ "tree", "./.git/sparse", "-L", "1" },
-    });
-    defer allocator.free(run_result.stderr);
-    defer allocator.free(run_result.stdout);
-    std.debug.print("Return Signal: {any}", .{run_result.term});
-    std.debug.print("Output:\n{s}", .{run_result.stdout});
     const git_branch_result = try Git.branch(.{ .allocator = allocator });
     defer allocator.free(git_branch_result.stderr);
     defer allocator.free(git_branch_result.stdout);
     std.debug.print("Return Signal: {any}", .{git_branch_result.term});
     std.debug.print("Output:\n{s}", .{git_branch_result.stdout});
-    try Sparse.feature(.{ .feature = .{ .name = .{"hello_moto"} }, ._options = .{ .@"--to" = .{ .name = .{"dev"} } } });
+    try Sparse.feature(.{
+        .feature = .{ .name = .{"sparse-test"} },
+        ._options = .{
+            .@"--to" = "dev",
+        },
+    });
     try Sparse.slice(.{});
     try Sparse.submit(.{});
 }

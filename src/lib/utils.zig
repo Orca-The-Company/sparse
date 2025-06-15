@@ -6,10 +6,14 @@ pub fn combine(
     arr1: []const T,
     arr2: []const T,
 ) ![]T {
-    var all = try allocator.alloc(T, arr1.len + arr2.len);
-    @memcpy(all[0..arr1.len], arr1);
-    @memcpy(all[arr1.len..], arr2);
-    return all;
+    var arr_list: std.ArrayListUnmanaged(T) = try std.ArrayListUnmanaged(T).initCapacity(allocator, arr1.len + arr2.len);
+    for (arr1) |item| {
+        try arr_list.append(allocator, item);
+    }
+    for (arr2) |item| {
+        try arr_list.append(allocator, item);
+    }
+    return try arr_list.toOwnedSlice(allocator);
 }
 
 pub fn trimString(slice: []const u8, o: struct {

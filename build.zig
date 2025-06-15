@@ -84,7 +84,7 @@ pub fn build(b: *std.Build) !void {
 
     const run_exe_unit_tests = b.addRunArtifact(exe_unit_tests);
 
-    const test_step = b.step("test", "Run unit tests");
+    var test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_lib_unit_tests.step);
     test_step.dependOn(&run_exe_unit_tests.step);
     {
@@ -104,4 +104,27 @@ pub fn build(b: *std.Build) !void {
             },
         );
     }
+
+    const integration_tests_step = step: {
+        const integration_tests = b.addExecutable(.{
+            .name = "sparse-integration-tests",
+            .root_source_file = b.path("test/integration.zig"),
+            .optimize = optimize,
+            .target = target,
+        });
+        integration_tests.root_module.addImport("sparse", exe_mod);
+        const integration_tests_runner = b.addRunArtifact(integration_tests);
+
+        const test_options = b.addOptions();
+        test_options.addOptionPath("sparse_exe_path", exe.getEmittedBin());
+        test_options.addOption([]const u8, "output_dir", b.exe_dir);
+        integration_tests.root_module.addOptions("build_options", test_options);
+        //integration_tests_runner.addArg(exe.getEmittedBin().generated.sub_path);
+
+        const integration_step = b.step("test-integration", "Run integration tests for sparse");
+        integration_step.dependOn(&integration_tests_runner.step);
+        break :step integration_step;
+    };
+
+    integration_tests_step.dependOn(test_step);
 }

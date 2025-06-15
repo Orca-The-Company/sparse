@@ -109,14 +109,16 @@ pub fn findFeatureByName(o: struct {
             // found an existing branch check if it has slices
             if (std.mem.startsWith(u8, ref.refname, with_slice)) {
                 // refs/heads/sparse/<username>/<feature_name>/slice/
+                const refs = try Git.getFeatureSliceRefs(.{
+                    .allocator = o.allocator,
+                    .feature_name = o.feature_name,
+                });
+
                 return try Feature.new(.{
                     .alloc = o.allocator,
                     .name = without_slice,
                     .ref = ref.objectname,
-                    .slices = try Git.getFeatureSliceRefs(.{
-                        .allocator = o.allocator,
-                        .feature_name = o.feature_name,
-                    }),
+                    .slices = refs,
                 });
             } else {
                 // this is weird.
@@ -134,11 +136,96 @@ pub fn recoverFeatureWithName() !Feature {
     return SparseError.CORRUPTED_FEATURE;
 }
 
-pub fn save(self: Feature) !void {
-    _ = self;
-    //TODO: convert plain branch names into sparse feature names
-    // we already have the feature branch to go at this point so just switch to it
+pub fn activate(self: *Feature, o: struct {
+    allocator: std.mem.Allocator,
+    create: bool = false,
+    slice_name: []const u8,
+}) !void {
+    log.debug(
+        "activate:: o:create={any} o:slice_name={s}",
+        .{
+            o.create,
+            o.slice_name,
+        },
+    );
+
+    const sparse_name = try asFeatureName(o.allocator, self.name);
+    o.allocator.free(self.name);
+    self.name = sparse_name;
+
+    var slice_name: []u8 = undefined;
+    defer o.allocator.free(slice_name);
+
+    if (std.mem.eql(u8, o.slice_name, constants.LAST_SLICE_NAME_POINTER)) {
+        if (self.slices) |slice_refs| {
+            if (o.create) {
+                slice_name = try std.fmt.allocPrint(
+                    o.allocator,
+                    "{s}/{d}",
+                    .{ self.name, slice_refs.list.items.len + 1 },
+                );
+            } else {
+                if (slice_refs.list.items.len > 0) {
+                    slice_name = try std.fmt.allocPrint(
+                        o.allocator,
+                        "{s}",
+                        .{slice_refs.list.items[0].refname},
+                    );
+                } else {
+                    slice_name = try std.fmt.allocPrint(o.allocator, "{s}/slice/1", .{self.name});
+                }
+            }
+        } else {
+            slice_name = try std.fmt.allocPrint(o.allocator, "{s}/slice/1", .{self.name});
+        }
+    } else {
+        slice_name = try std.fmt.allocPrint(o.allocator, "{s}/slice/{s}", .{ self.name, o.slice_name });
+    }
+
+    log.debug("activate:: switching branch_name={s}", .{slice_name});
+
+    var switch_args: []const []const u8 = undefined;
+
+    if (o.create) {
+        if (self.start_point) |start_point| {
+            switch_args = &.{
+                "-c",
+                slice_name["refs/heads/".len..],
+                start_point,
+            };
+        } else {
+            switch_args = &.{
+                "-c",
+                slice_name["refs/heads/".len..],
+            };
+        }
+    } else {
+        switch_args = &.{
+            slice_name["refs/heads/".len..],
+        };
+    }
+    const rr = try Git.@"switch"(.{
+        .allocator = o.allocator,
+        .args = switch_args,
+    });
+    defer o.allocator.free(rr.stdout);
+    defer o.allocator.free(rr.stderr);
+
+    log.debug("switch result: stdout:{s} stderr:{s}", .{ rr.stdout, rr.stderr });
+}
+
+fn asFeatureName(allocator: std.mem.Allocator, name: []const u8) ![]const u8 {
+    if (std.mem.startsWith(u8, name, "refs/heads/sparse/")) {
+        // already a sparse feature name it seems
+        return std.fmt.allocPrint(allocator, "{s}", .{name});
+    }
+    // refs/heads/sparse/<usermail>/<feature_name>
     //
+    return try std.fmt.allocPrint(allocator, "{s}{s}/{s}", .{
+        constants.BRANCH_REFS_PREFIX,
+        "havadartalha@gmail.com",
+        name,
+    });
 }
 
 fn sliceNameToFeatureName(slice_name: []const u8) []const u8 {

@@ -149,46 +149,40 @@ pub fn getFeatureSliceRefs(o: struct {
     allocator: std.mem.Allocator,
     feature_name: []const u8,
 }) !Refs {
-    const glob = try std.fmt.allocPrint(
+    const pattern = try std.fmt.allocPrint(
         o.allocator,
-        "--glob=refs/heads/sparse/{s}/{s}/slice/*",
+        "refs/heads/sparse/{s}/{s}/slice/",
         .{
             "havadartalha@gmail.com",
             o.feature_name,
         },
     );
-    defer o.allocator.free(glob);
+    defer o.allocator.free(pattern);
 
     // refs/heads/sparse/<username>/<feature_name>/slice/
-    const rr: std.process.Child.RunResult = try @"rev-parse"(.{
+    const rr = try @"for-each-ref"(.{
         .allocator = o.allocator,
-        .args = &.{
-            "--symbolic-full-name",
-            glob,
-        },
+        .args = &.{ "--sort=-committerdate", pattern, "--format=%(objectname) %(refname)" },
     });
     defer o.allocator.free(rr.stderr);
     defer o.allocator.free(rr.stdout);
 
-    const rr_refs: std.process.Child.RunResult = try @"rev-parse"(.{
-        .allocator = o.allocator,
-        .args = &.{glob},
-    });
-    defer o.allocator.free(rr_refs.stderr);
-    defer o.allocator.free(rr_refs.stdout);
-
-    var rr_iter = std.mem.tokenizeScalar(u8, rr.stdout, '\n');
-    var rr_refs_iter = std.mem.splitScalar(u8, rr_refs.stdout, '\n');
-    var refs: Refs = try Refs.new(o.allocator);
-    while (rr_iter.next()) |refname| {
-        const objectname = rr_refs_iter.next().?;
-        try refs.list.append(o.allocator, try Ref.new(.{
-            .alloc = o.allocator,
-            .rname = refname,
-            .oname = objectname,
-        }));
+    if (rr.term.Exited == 0) {
+        var rr_iter = std.mem.splitScalar(u8, rr.stdout, '\n');
+        var refs: Refs = try Refs.new(o.allocator);
+        while (rr_iter.next()) |ref_line| {
+            var line_iter = std.mem.splitScalar(u8, ref_line, ' ');
+            const objectname = line_iter.first();
+            const refname = line_iter.rest();
+            try refs.list.append(o.allocator, try Ref.new(.{
+                .alloc = o.allocator,
+                .rname = refname,
+                .oname = objectname,
+            }));
+        }
+        return refs;
     }
-    return refs;
+    return SparseError.BACKEND_UNABLE_TO_GET_REFS;
 }
 
 pub fn branch(options: struct {
@@ -198,6 +192,28 @@ pub fn branch(options: struct {
     const run_result: RunResult = try std.process.Child.run(.{
         .allocator = options.allocator,
         .argv = &.{ "git", "branch", "-vva" },
+    });
+    return run_result;
+}
+
+fn @"for-each-ref"(o: struct {
+    allocator: std.mem.Allocator,
+    args: []const []const u8 = &.{},
+}) !RunResult {
+    log.debug("for-each-ref:: args:{s}", .{o.args});
+    const command: []const []const u8 = &.{
+        "git",
+        "for-each-ref",
+        // "--sort=-committerdate",
+        // "refs/heads/sparse/havadartalha@gmail.com/hello-moto/slice/",
+    };
+
+    const argv = try utils.combine([]const u8, o.allocator, command, o.args);
+    defer o.allocator.free(argv);
+
+    const run_result: RunResult = try std.process.Child.run(.{
+        .allocator = o.allocator,
+        .argv = argv,
     });
     return run_result;
 }

@@ -27,7 +27,7 @@ pub fn feature(
         target,
     });
 
-    const _slice = if (slice_name) |s| s else "-1";
+    const _slice = if (slice_name) |s| s else constants.LAST_SLICE_NAME_POINTER;
 
     // once sparse branchinde olup olmadigimizi kontrol edelim
     // git show-ref --branches --head # butun branchleri ve suan ki HEAD i gormemizi
@@ -35,13 +35,23 @@ pub fn feature(
     var maybe_active_feature = try Feature.activeFeature(.{
         .allocator = allocator,
     });
+    defer {
+        if (maybe_active_feature) |*f| {
+            f.free(allocator);
+        }
+    }
+
     var maybe_existing_feature = try Feature.findFeatureByName(.{
         .allocator = allocator,
         .feature_name = feature_name,
     });
+    defer {
+        if (maybe_existing_feature) |*f| {
+            f.free(allocator);
+        }
+    }
 
     if (maybe_active_feature) |*active_feature| {
-        defer active_feature.free(allocator);
         log.debug(
             "feature:: active_feature:name={s}",
             .{
@@ -52,7 +62,6 @@ pub fn feature(
         // I am already an active sparse feature and I want to go to a feature
         // right so lets check if it is necessary
         if (maybe_existing_feature) |*feature_to_go| {
-            defer feature_to_go.free(allocator);
             log.debug(
                 "feature:: feature_to_go:name={s}",
                 .{
@@ -68,7 +77,7 @@ pub fn feature(
                 return try jump(.{
                     .allocator = allocator,
                     .from = active_feature.*,
-                    .to = feature_to_go.*,
+                    .to = feature_to_go,
                     .slice = _slice,
                 });
             }
@@ -82,7 +91,7 @@ pub fn feature(
             return try jump(.{
                 .allocator = allocator,
                 .from = active_feature.*,
-                .to = to,
+                .to = &to,
                 .create = true,
                 .slice = _slice,
             });
@@ -96,7 +105,7 @@ pub fn feature(
         defer to.free(allocator);
         return try jump(.{
             .allocator = allocator,
-            .to = to,
+            .to = &to,
             .create = true,
             .slice = _slice,
         });
@@ -118,9 +127,9 @@ pub fn submit(opts: struct {}) !void {
 fn jump(o: struct {
     allocator: std.mem.Allocator,
     from: ?Feature = null,
-    to: Feature,
+    to: *Feature,
     create: bool = false,
-    slice: []const u8 = "-1",
+    slice: []const u8 = constants.LAST_SLICE_NAME_POINTER,
 }) !void {
     log.debug(
         "jump:: from:{s} to:{s} slice:{s} to:start_point:{s} create:{any}",
@@ -134,7 +143,11 @@ fn jump(o: struct {
     );
     // TODO: handle gracefully saving things for current feature (`from`)
 
-    try o.to.save();
+    try o.to.activate(.{
+        .allocator = o.allocator,
+        .create = o.create,
+        .slice_name = o.slice,
+    });
     // const run_result = try Git.@"switch"(.{
     //     .allocator = o.allocator,
     //     .args = &.{
@@ -151,6 +164,7 @@ fn jump(o: struct {
     // }
 }
 
+const constants = @import("constants.zig");
 const GitString = @import("libgit2/types.zig").GitString;
 const Git = @import("system/Git.zig");
 const Feature = @import("Feature.zig");

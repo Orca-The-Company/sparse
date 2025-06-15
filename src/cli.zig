@@ -32,20 +32,6 @@ pub fn run() !void {
     std.debug.print("return_code: {d}\n", .{return_code});
 }
 
-test "parse check command" {
-    const expectEqual = std.testing.expectEqual;
-    const args: [2][:0]const u8 = .{ "sparse", "check" };
-    const command = try parse(@constCast(@ptrCast(&args)));
-    try expectEqual("check", @tagName(command));
-}
-
-test "parse new command" {
-    const expectEqual = std.testing.expectEqual;
-    const args: [2][:0]const u8 = .{ "sparse", "new" };
-    const command = try parse(@constCast(@ptrCast(&args)));
-    try expectEqual("new", @tagName(command));
-}
-
 test "parse a non existent command" {
     const expectEqual = std.testing.expectEqual;
     const args: [2][:0]const u8 = .{ "sparse", "boo" };

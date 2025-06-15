@@ -1,6 +1,7 @@
 const Allocator = @import("std").mem.Allocator;
 const RunResult = @import("std").process.Child.RunResult;
 const std = @import("std");
+const log = std.log.scoped(.Feature);
 
 const Feature = @This();
 
@@ -61,7 +62,7 @@ pub fn activeFeature(o: struct {
         if (std.mem.eql(u8, ref.objectname, head_ref.objectname)) {
             return try Feature.new(.{
                 .alloc = o.allocator,
-                .name = ref.refname,
+                .name = sliceNameToFeatureName(ref.refname),
                 .ref = ref.objectname,
             });
         }
@@ -110,7 +111,7 @@ pub fn findFeatureByName(o: struct {
                 // refs/heads/sparse/<username>/<feature_name>/slice/
                 return try Feature.new(.{
                     .alloc = o.allocator,
-                    .name = ref.refname,
+                    .name = without_slice,
                     .ref = ref.objectname,
                     .slices = try Git.getFeatureSliceRefs(.{
                         .allocator = o.allocator,
@@ -138,6 +139,12 @@ pub fn save(self: Feature) !void {
     //TODO: convert plain branch names into sparse feature names
     // we already have the feature branch to go at this point so just switch to it
     //
+}
+
+fn sliceNameToFeatureName(slice_name: []const u8) []const u8 {
+    log.debug("sliceNameToFeatureName:: slice_name:{s}", .{slice_name});
+    const until = std.mem.indexOf(u8, slice_name, "/slice/") orelse slice_name.len;
+    return slice_name[0..until];
 }
 
 const constants = @import("constants.zig");

@@ -4,7 +4,7 @@ const log = @import("std").log.scoped(.feature_command);
 //const FeatureCommand = @This();
 
 const Params = struct {
-    feature_name: [1][]u8 = undefined,
+    feature_name: [1][]u8,
     slice_name: ?[1][]u8 = null,
     _options: struct {
         @"--to": []const u8 = "main",
@@ -22,7 +22,7 @@ pub const FeatureCommand = struct {
     ///     --to <base_(feature/branch)>: branch or feature to build on top (default: main)
     pub fn run(self: FeatureCommand, alloc: Allocator) !u8 {
         _ = self;
-        var params = Params{};
+        var params = Params{ .feature_name = undefined };
         const args = try std.process.argsAlloc(alloc);
         defer std.process.argsFree(alloc, args);
         log.debug("got cli arguments: {s}", .{args});

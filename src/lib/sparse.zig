@@ -42,14 +42,27 @@ pub fn feature(
 
     if (maybe_active_feature) |*active_feature| {
         defer active_feature.free(allocator);
+        log.debug(
+            "feature:: active_feature:name={s}",
+            .{
+                active_feature.name,
+            },
+        );
 
         // I am already an active sparse feature and I want to go to a feature
         // right so lets check if it is necessary
         if (maybe_existing_feature) |*feature_to_go| {
             defer feature_to_go.free(allocator);
+            log.debug(
+                "feature:: feature_to_go:name={s}",
+                .{
+                    feature_to_go.name,
+                },
+            );
 
-            if (std.mem.eql(u8, feature_to_go.ref.?, active_feature.ref.?)) {
+            if (std.mem.eql(u8, feature_to_go.name, active_feature.name)) {
                 // returning no need to do anything fancy
+                log.info("feature:: already in same feature({s})", .{active_feature.name});
                 return;
             } else {
                 return try jump(.{
@@ -110,12 +123,12 @@ fn jump(o: struct {
     slice: []const u8 = "-1",
 }) !void {
     log.debug(
-        "jump:: from:{s} to:{s} slice:{s} start_point:{s} create:{any}",
+        "jump:: from:{s} to:{s} slice:{s} to:start_point:{s} create:{any}",
         .{
             if (o.from) |f| f.name else "null",
             o.to.name,
             o.slice,
-            o.to.start_point.?,
+            if (o.to.start_point) |s| s else "null",
             o.create,
         },
     );

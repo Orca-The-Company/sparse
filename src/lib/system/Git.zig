@@ -111,7 +111,6 @@ pub fn getBranchRefs(o: struct {
     return SparseError.BACKEND_UNABLE_TO_GET_REFS;
 }
 
-/// git rev-parse --symbolic-full-name --glob="refs/sparse/*"
 pub fn getSparseRefs(o: struct {
     allocator: std.mem.Allocator,
 }) !Refs {
@@ -146,6 +145,51 @@ pub fn getSparseRefs(o: struct {
     log.debug("getSparseRefs:: unable to get refs", .{});
     return SparseError.BACKEND_UNABLE_TO_GET_REFS;
 }
+pub fn getFeatureSliceRefs(o: struct {
+    allocator: std.mem.Allocator,
+    feature_name: []const u8,
+}) !Refs {
+    const glob = try std.fmt.allocPrint(
+        o.allocator,
+        "--glob=refs/heads/sparse/{s}/{s}/slice/*",
+        .{
+            "havadartalha@gmail.com",
+            o.feature_name,
+        },
+    );
+    defer o.allocator.free(glob);
+
+    // refs/heads/sparse/<username>/<feature_name>/slice/
+    const rr: std.process.Child.RunResult = try @"rev-parse"(.{
+        .allocator = o.allocator,
+        .args = &.{
+            "--symbolic-full-name",
+            glob,
+        },
+    });
+    defer o.allocator.free(rr.stderr);
+    defer o.allocator.free(rr.stdout);
+
+    const rr_refs: std.process.Child.RunResult = try @"rev-parse"(.{
+        .allocator = o.allocator,
+        .args = &.{glob},
+    });
+    defer o.allocator.free(rr_refs.stderr);
+    defer o.allocator.free(rr_refs.stdout);
+
+    var rr_iter = std.mem.tokenizeScalar(u8, rr.stdout, '\n');
+    var rr_refs_iter = std.mem.splitScalar(u8, rr_refs.stdout, '\n');
+    var refs: Refs = try Refs.new(o.allocator);
+    while (rr_iter.next()) |refname| {
+        const objectname = rr_refs_iter.next().?;
+        try refs.list.append(o.allocator, try Ref.new(.{
+            .alloc = o.allocator,
+            .rname = refname,
+            .oname = objectname,
+        }));
+    }
+    return refs;
+}
 
 pub fn branch(options: struct {
     allocator: std.mem.Allocator,
@@ -178,7 +222,7 @@ fn @"show-ref"(options: struct {
     return run_result;
 }
 
-fn @"rev-parse"(o: struct {
+pub fn @"rev-parse"(o: struct {
     allocator: std.mem.Allocator,
     args: []const []const u8,
 }) !RunResult {

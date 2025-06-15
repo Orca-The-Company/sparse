@@ -32,20 +32,20 @@ pub fn feature(
     // once sparse branchinde olup olmadigimizi kontrol edelim
     // git show-ref --branches --head # butun branchleri ve suan ki HEAD i gormemizi
     // sagliyor
-    const maybe_active_feature = try Feature.activeFeature(.{
+    var maybe_active_feature = try Feature.activeFeature(.{
         .allocator = allocator,
     });
-    const maybe_existing_feature = try Feature.findFeatureByName(.{
+    var maybe_existing_feature = try Feature.findFeatureByName(.{
         .allocator = allocator,
         .feature_name = feature_name,
     });
 
-    if (maybe_active_feature) |active_feature| {
+    if (maybe_active_feature) |*active_feature| {
         defer active_feature.free(allocator);
 
         // I am already an active sparse feature and I want to go to a feature
         // right so lets check if it is necessary
-        if (maybe_existing_feature) |feature_to_go| {
+        if (maybe_existing_feature) |*feature_to_go| {
             defer feature_to_go.free(allocator);
 
             if (std.mem.eql(u8, feature_to_go.ref.?, active_feature.ref.?)) {
@@ -54,13 +54,13 @@ pub fn feature(
             } else {
                 return try jump(.{
                     .allocator = allocator,
-                    .from = active_feature,
-                    .to = feature_to_go,
+                    .from = active_feature.*,
+                    .to = feature_to_go.*,
                     .slice = _slice,
                 });
             }
         } else {
-            const to = try Feature.new(.{
+            var to = try Feature.new(.{
                 .alloc = allocator,
                 .name = feature_name,
                 .start_point = target,
@@ -68,14 +68,14 @@ pub fn feature(
             defer to.free(allocator);
             return try jump(.{
                 .allocator = allocator,
-                .from = active_feature,
+                .from = active_feature.*,
                 .to = to,
                 .create = true,
                 .slice = _slice,
             });
         }
     } else {
-        const to = try Feature.new(.{
+        var to = try Feature.new(.{
             .alloc = allocator,
             .name = feature_name,
             .start_point = target,
@@ -121,9 +121,6 @@ fn jump(o: struct {
     );
     // TODO: handle gracefully saving things for current feature (`from`)
 
-    //TODO: convert plain branch names into sparse feature names
-    // we already have the feature branch to go at this point so just switch to it
-    //
     try o.to.save();
     // const run_result = try Git.@"switch"(.{
     //     .allocator = o.allocator,

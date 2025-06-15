@@ -7,12 +7,14 @@ const Feature = @This();
 name: GitString,
 ref: ?GitString = null,
 start_point: ?GitString = null,
+slices: ?Git.Refs = null,
 
 pub fn new(o: struct {
     alloc: std.mem.Allocator,
     name: GitString,
     ref: ?GitString = null,
     start_point: ?GitString = null,
+    slices: ?Git.Refs = null,
 }) !Feature {
     const dup = try o.alloc.dupe(u8, o.name);
 
@@ -20,15 +22,19 @@ pub fn new(o: struct {
         .name = dup,
         .ref = if (o.ref) |r| try o.alloc.dupe(u8, r) else null,
         .start_point = if (o.start_point) |s| try o.alloc.dupe(u8, s) else null,
+        .slices = if (o.slices) |s| s else null,
     };
 }
 
-pub fn free(self: Feature, allocator: Allocator) void {
+pub fn free(self: *Feature, allocator: Allocator) void {
     if (self.ref) |r| {
         allocator.free(r);
     }
     if (self.start_point) |s| {
         allocator.free(s);
+    }
+    if (self.slices) |*s| {
+        s.free(allocator);
     }
     allocator.free(self.name);
 }
@@ -78,7 +84,7 @@ pub fn findFeatureByName(o: struct {
     //
     const with_slice = try std.fmt.allocPrint(
         o.allocator,
-        "{s}/{s}/{s}/slice/",
+        "{s}{s}/{s}/slice/",
         .{
             constants.BRANCH_REFS_PREFIX,
             "havadartalha@gmail.com",
@@ -88,7 +94,7 @@ pub fn findFeatureByName(o: struct {
     defer o.allocator.free(with_slice);
     const without_slice = try std.fmt.allocPrint(
         o.allocator,
-        "{s}/{s}/{s}",
+        "{s}{s}/{s}",
         .{
             constants.BRANCH_REFS_PREFIX,
             "havadartalha@gmail.com",
@@ -98,13 +104,18 @@ pub fn findFeatureByName(o: struct {
     defer o.allocator.free(without_slice);
 
     for (branch_refs.list.items) |ref| {
-        if (std.mem.eql(u8, ref.refname, without_slice)) {
+        if (std.mem.startsWith(u8, ref.refname, without_slice)) {
             // found an existing branch check if it has slices
-            if (std.mem.eql(u8, ref.refname, with_slice)) {
+            if (std.mem.startsWith(u8, ref.refname, with_slice)) {
+                // refs/heads/sparse/<username>/<feature_name>/slice/
                 return try Feature.new(.{
                     .alloc = o.allocator,
                     .name = ref.refname,
                     .ref = ref.objectname,
+                    .slices = try Git.getFeatureSliceRefs(.{
+                        .allocator = o.allocator,
+                        .feature_name = o.feature_name,
+                    }),
                 });
             } else {
                 // this is weird.
@@ -124,6 +135,9 @@ pub fn recoverFeatureWithName() !Feature {
 
 pub fn save(self: Feature) !void {
     _ = self;
+    //TODO: convert plain branch names into sparse feature names
+    // we already have the feature branch to go at this point so just switch to it
+    //
 }
 
 const constants = @import("constants.zig");

@@ -51,6 +51,14 @@ pub fn activeFeature(o: struct {
     const head_ref = try Git.getHeadRef(.{ .allocator = o.allocator });
     defer head_ref.free(o.allocator);
 
+    log.debug(
+        "activeFeature:: head_ref:refname={s} head_ref:objectname:{s}",
+        .{
+            head_ref.refname,
+            head_ref.objectname,
+        },
+    );
+
     // now we can search for sparse refs
     var sparse_refs = try Git.getSparseRefs(.{
         .allocator = o.allocator,
@@ -59,7 +67,7 @@ pub fn activeFeature(o: struct {
 
     for (sparse_refs.list.items) |ref| {
         // we are in sparse feature
-        if (std.mem.eql(u8, ref.objectname, head_ref.objectname)) {
+        if (std.mem.eql(u8, ref.refname, head_ref.refname)) {
             return try Feature.new(.{
                 .alloc = o.allocator,
                 .name = sliceNameToFeatureName(ref.refname),

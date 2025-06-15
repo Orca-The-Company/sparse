@@ -53,28 +53,38 @@ pub const Refs = struct {
 pub fn getHeadRef(o: struct {
     allocator: std.mem.Allocator,
 }) !Ref {
-    var branch_refs = try getBranchRefs(.{
+    const rr_refname = try @"rev-parse"(.{
         .allocator = o.allocator,
+        .args = &.{
+            "--symbolic-full-name",
+            "HEAD",
+        },
     });
-    defer branch_refs.free(o.allocator);
-    if (branch_refs.list.items.len == 0) {
+    defer o.allocator.free(rr_refname.stderr);
+    defer o.allocator.free(rr_refname.stdout);
+
+    const rr_objectname = try @"rev-parse"(.{
+        .allocator = o.allocator,
+        .args = &.{
+            "HEAD",
+        },
+    });
+    defer o.allocator.free(rr_objectname.stderr);
+    defer o.allocator.free(rr_objectname.stdout);
+
+    if (rr_refname.term.Exited != 0 or rr_objectname.term.Exited != 0) {
         log.debug("getHeadRef:: unable to determine current branch", .{});
         return SparseError.BACKEND_UNABLE_TO_DETERMINE_CURRENT_BRANCH;
     }
 
     // <objectname> <refname> # is the expected format
-    const objectname = branch_refs.list.items[0].objectname;
-    const refname = branch_refs.list.items[0].refname;
-    if (std.mem.eql(u8, refname, "HEAD")) {
-        return Ref.new(.{
-            .alloc = o.allocator,
-            .oname = objectname,
-            .rname = refname,
-        });
-    } else {
-        log.debug("getHeadRef:: unable to determine current branch", .{});
-        return SparseError.BACKEND_UNABLE_TO_DETERMINE_CURRENT_BRANCH;
-    }
+    const objectname = utils.trimString(rr_objectname.stdout, .{});
+    const refname = utils.trimString(rr_refname.stdout, .{});
+    return Ref.new(.{
+        .alloc = o.allocator,
+        .oname = objectname,
+        .rname = refname,
+    });
 }
 
 pub fn getBranchRefs(o: struct {
@@ -204,8 +214,6 @@ fn @"for-each-ref"(o: struct {
     const command: []const []const u8 = &.{
         "git",
         "for-each-ref",
-        // "--sort=-committerdate",
-        // "refs/heads/sparse/havadartalha@gmail.com/hello-moto/slice/",
     };
 
     const argv = try utils.combine([]const u8, o.allocator, command, o.args);

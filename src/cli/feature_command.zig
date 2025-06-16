@@ -12,20 +12,34 @@ const Params = struct {
         @"-h": *const fn () void = Options.help,
 
         pub fn help() void {
-            std.debug.print("this is an help text\n", .{});
+            std.io.getStdOut().writer().print(
+                \\ sparse feature [ options ] <feature_name> [<slice_name>]
+                \\ args:
+                \\     <feature_name>: name of the feature to be created. If a feature with the
+                \\                     same name exists, sparse simply switches to that feature.
+                \\     <slice_name>:   name of the first slice in newly created feature. This
+                \\                     argument is ignored if the feature already exists.
+                \\ options:
+                \\     --help: Shows this help message
+                \\     --to <base_(feature/branch)>: branch or feature to build on top (default: main)
+                \\
+            , .{}) catch return;
         }
     } = .{},
 };
+
+///
+/// sparse feature [ options ] <feature_name> [<slice_name>]
+/// args:
+///     <feature_name>: name of the feature to be created. If a feature with the
+///                     same name exists, sparse simply switches to that feature.
+///     <slice_name>:   name of the first slice in newly created feature. This
+///                     argument is ignored if the feature already exists.
+/// options:
+///     --help: Shows this help message
+///     --to <base_(feature/branch)>: branch or feature to build on top (default: main)
+///
 pub const FeatureCommand = struct {
-    /// sparse feature [ options ] <feature_name> [<slice_name>]
-    /// args:
-    ///     <feature_name>: name of the feature to be created. If a feature with the
-    ///                     same name exists, sparse simply switches to that feature.
-    ///     <slice_name>:   name of the first slice in newly created feature. This
-    ///                     argument is ignored if the feature already exists.
-    /// options:
-    ///     --help: Shows this help message
-    ///     --to <base_(feature/branch)>: branch or feature to build on top (default: main)
     pub fn run(self: FeatureCommand, alloc: Allocator) !u8 {
         _ = self;
         var params = Params{ .feature_name = undefined };

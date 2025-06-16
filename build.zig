@@ -113,7 +113,14 @@ pub fn build(b: *std.Build) !void {
             .target = target,
         });
         integration_tests.root_module.addImport("sparse", exe_mod);
+
+        const integration_unit_tests = b.addTest(.{
+            .root_module = integration_tests.root_module,
+        });
+        const run_integration_unit_tests = b.addRunArtifact(integration_unit_tests);
+
         const integration_tests_runner = b.addRunArtifact(integration_tests);
+        integration_tests_runner.step.dependOn(&run_integration_unit_tests.step);
 
         const test_options = b.addOptions();
         test_options.addOptionPath("sparse_exe_path", exe.getEmittedBin());

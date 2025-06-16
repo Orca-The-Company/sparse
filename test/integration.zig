@@ -1,5 +1,6 @@
 const builtin = @import("builtin");
 const std = @import("std");
+const assert = @import("std").debug.assert;
 const log = std.log.scoped(.integration);
 const sparse = @import("sparse");
 const build_options = @import("build_options");
@@ -54,6 +55,14 @@ pub fn main() !void {
         defer allocator.free(rr.stdout);
         defer allocator.free(rr.stderr);
     }
+}
+
+test "Hello Integration" {
+    try std.testing.expect(false);
+}
+
+test "Hello Integration2" {
+    try std.testing.expect(true);
 }
 
 const system = @import("system.zig");

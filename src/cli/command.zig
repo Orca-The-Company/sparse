@@ -1,4 +1,5 @@
 const std = @import("std");
+const log = std.log.scoped(.command);
 const debug = std.debug.print;
 const Allocator = std.mem.Allocator;
 
@@ -13,6 +14,8 @@ pub const Error = error{
     UnknownCommand,
     MissingArgument,
     UnexpectedArgument,
+    UnknownOption,
+    OptionHandledAlready,
 };
 
 pub const ArgType = enum {
@@ -127,21 +130,40 @@ pub fn parseOptions(
     args: [][:0]u8,
 ) ![][]u8 {
     const fields = @typeInfo(T).@"struct".fields;
-
     var positionals: std.ArrayListUnmanaged([]u8) = .empty;
     defer positionals.deinit(alloc);
+
     var item: T = .{};
     var index: usize = 0;
     while (index < args.len) : (index += 1) {
-        if (std.mem.startsWith(u8, args[index], "--")) {
+        if (std.mem.startsWith(u8, args[index], "-")) {
+            var option_handled: bool = false;
             inline for (fields) |field| {
                 if (std.mem.eql(u8, field.name, args[index])) {
+                    option_handled = true;
                     switch (@typeInfo(field.type)) {
                         .bool => {
                             @field(item, field.name) = !field.defaultValue().?;
                         },
+                        .pointer => |parent| {
+                            switch (@typeInfo(parent.child)) {
+                                .@"fn" => {
+                                    @field(item, field.name)();
+                                    return Error.OptionHandledAlready;
+                                },
+                                else => {
+                                    if (index + 1 >= args.len) {
+                                        std.log.err("missing argument for '{s}'", .{args[index]});
+                                        return Error.MissingArgument;
+                                    }
+                                    index += 1;
+                                    @field(item, field.name) = args[index];
+                                },
+                            }
+                        },
                         else => {
                             if (index + 1 >= args.len) {
+                                std.log.err("missing argument for '{s}'", .{args[index]});
                                 return Error.MissingArgument;
                             }
                             index += 1;
@@ -149,6 +171,10 @@ pub fn parseOptions(
                         },
                     }
                 }
+            }
+            if (!option_handled) {
+                log.err("unknown option '{s}'", .{args[index]});
+                return Error.UnknownOption;
             }
         } else {
             try positionals.append(alloc, args[index]);

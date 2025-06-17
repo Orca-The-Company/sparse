@@ -1,43 +1,38 @@
 const std = @import("std");
 const Allocator = @import("std").mem.Allocator;
 const log = @import("std").log.scoped(.feature_command);
+const help_strings = @import("help_strings");
 
+/// sparse feature [ options ] <feature_name> [<slice_name>]
 const Params = struct {
+    /// args:
+    /// <feature_name>: name of the feature to be created. If a feature with the same name
+    ///                 exists, sparse simply switches to that feature.
     feature_name: [1][]u8,
+    /// <slice_name>:   name of the first slice in newly created feature. This
+    ///                 argument is ignored if the feature already exists.
     slice_name: ?[1][]u8 = null,
+    ///
+    /// options:
     _options: struct {
         const Options = @This();
+
+        /// --to <branch>: branch to build on top. Pull requests for the new
+        ///                feature will target this branch. (default: main)
         @"--to": []const u8 = "main",
+
+        /// -h, --help:    shows this help message.
         @"--help": *const fn () void = Options.help,
         @"-h": *const fn () void = Options.help,
 
         pub fn help() void {
-            std.io.getStdOut().writer().print(
-                \\ sparse feature [ options ] <feature_name> [<slice_name>]
-                \\ args:
-                \\     <feature_name>: name of the feature to be created. If a feature with the
-                \\                     same name exists, sparse simply switches to that feature.
-                \\     <slice_name>:   name of the first slice in newly created feature. This
-                \\                     argument is ignored if the feature already exists.
-                \\ options:
-                \\     --help: Shows this help message
-                \\     --to <base_(feature/branch)>: branch or feature to build on top (default: main)
-                \\
-            , .{}) catch return;
+            std.io.getStdOut().writer().print(help_strings.sparse_feature, .{}) catch return;
         }
     } = .{},
 };
 
 ///
 /// sparse feature [ options ] <feature_name> [<slice_name>]
-/// args:
-///     <feature_name>: name of the feature to be created. If a feature with the
-///                     same name exists, sparse simply switches to that feature.
-///     <slice_name>:   name of the first slice in newly created feature. This
-///                     argument is ignored if the feature already exists.
-/// options:
-///     --help: Shows this help message
-///     --to <base_(feature/branch)>: branch or feature to build on top (default: main)
 ///
 pub const FeatureCommand = struct {
     pub fn run(self: FeatureCommand, alloc: Allocator) !u8 {

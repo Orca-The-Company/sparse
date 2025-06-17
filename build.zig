@@ -86,4 +86,21 @@ pub fn build(b: *std.Build) !void {
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_lib_unit_tests.step);
     test_step.dependOn(&run_exe_unit_tests.step);
+    {
+        const helpgen_exe = b.addExecutable(.{
+            .name = "helpgen",
+            .root_module = b.createModule(.{
+                .root_source_file = b.path("src/cli/helpgen.zig"),
+                .target = b.graph.host,
+            }),
+        });
+        const help_run = b.addRunArtifact(helpgen_exe);
+        const output = help_run.captureStdOut();
+        exe.root_module.addAnonymousImport(
+            "help_strings",
+            .{
+                .root_source_file = output,
+            },
+        );
+    }
 }

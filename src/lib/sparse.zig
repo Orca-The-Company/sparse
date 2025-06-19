@@ -8,10 +8,6 @@ pub const Error = error{
     CORRUPTED_FEATURE,
 };
 
-const Slice = struct {
-    name: [1]GitString,
-};
-
 pub fn feature(
     feature_name: []const u8,
     slice_name: ?[]const u8,
@@ -206,3 +202,4 @@ const GitBranch = LibGit.GitBranch;
 const GitBranchType = LibGit.GitBranchType;
 const Git = @import("system/Git.zig");
 const Feature = @import("Feature.zig");
+pub const Slice = @import("slice.zig");

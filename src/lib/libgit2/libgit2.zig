@@ -25,3 +25,6 @@ pub const GitWorktreeAddOptions = @import("worktree.zig").GitWorktreeAddOptions;
 pub const GitBranchType = @import("branch.zig").GitBranchType;
 pub const GitBranch = @import("branch.zig").GitBranch;
 pub const GitRevSpec = @import("revspec.zig").GitRevSpec;
+pub const GitReflog = @import("reflog.zig").GitReflog;
+pub const GitReflogEntry = @import("reflog.zig").GitReflogEntry;
+pub const GitSignature = @import("signature.zig").GitSignature;

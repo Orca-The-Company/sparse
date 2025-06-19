@@ -190,4 +190,4 @@ const GitBranch = LibGit.GitBranch;
 const GitBranchType = LibGit.GitBranchType;
 const Git = @import("system/Git.zig");
 const Feature = @import("Feature.zig");
-const Slice = @import("slice.zig");
+pub const Slice = @import("slice.zig");

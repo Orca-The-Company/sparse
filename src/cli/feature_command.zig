@@ -67,20 +67,31 @@ pub const FeatureCommand = struct {
                 params._options.@"--to",
             },
         );
-        Sparse.feature(
-            params.feature_name[0],
-            if (params.slice_name) |s| s[0] else null,
-            params._options.@"--to",
-        ) catch |err| switch (err) {
-            else => {
-                log.err("error: {any}", .{err});
-                return 1;
-            },
-        };
+
+        try LibGit.init();
+        defer LibGit.shutdown() catch @panic("Oops something weird is cooking...");
+        const repo = try LibGit.GitRepository.open();
+        defer repo.free();
+
+        try Sparse.Slice.getAllSlicesWith(.{
+            .allocator = alloc,
+            .repo = repo,
+        });
+        // Sparse.feature(
+        //     params.feature_name[0],
+        //     if (params.slice_name) |s| s[0] else null,
+        //     params._options.@"--to",
+        // ) catch |err| switch (err) {
+        //     else => {
+        //         log.err("error: {any}", .{err});
+        //         return 1;
+        //     },
+        // };
 
         return 0;
     }
 };
 
 const Sparse = @import("sparse_lib").Sparse;
+const LibGit = @import("sparse_lib").LibGit;
 const command = @import("command.zig");

@@ -1,7 +1,7 @@
 //! By convention, root.zig is the root source file when making a library. If
 //! you are making an executable, the convention is to delete this file and
 //! start with main.zig instead.
-const LibGit = @import("lib/libgit2/libgit2.zig");
+pub const LibGit = @import("lib/libgit2/libgit2.zig");
 const std = @import("std");
 
 pub fn examples() !void {

@@ -1,7 +1,9 @@
 const c = @import("c.zig").c;
+const log = @import("std").log.scoped(.reference);
 
 pub const GitReferenceIterator = struct {
     value: ?*c.git_reference_iterator = null,
+    _repo: GitRepository = undefined,
 
     pub fn create(repo: GitRepository) !GitReferenceIterator {
         var iterator: GitReferenceIterator = .{};
@@ -15,7 +17,9 @@ pub const GitReferenceIterator = struct {
     }
 
     pub fn fromGlob(glob: []const u8, repo: GitRepository) !GitReferenceIterator {
-        var iterator: GitReferenceIterator = .{};
+        var iterator: GitReferenceIterator = .{
+            ._repo = repo,
+        };
 
         const res: c_int = c.git_reference_iterator_glob_new(&iterator.value, repo.value, @ptrCast(glob));
         if (res < 0) {
@@ -30,7 +34,9 @@ pub const GitReferenceIterator = struct {
     }
 
     pub fn next(self: *GitReferenceIterator) !?GitReference {
-        var ref: GitReference = .{};
+        var ref: GitReference = .{
+            ._repo = self._repo,
+        };
 
         const res: c_int = c.git_reference_next(&ref.value, self.value);
         if (res == c.GIT_ITEROVER) {
@@ -38,6 +44,7 @@ pub const GitReferenceIterator = struct {
         } else if (res < 0) {
             return GitError.UNEXPECTED_ERROR;
         } else {
+            ref._reflog = try GitReflog.read(self._repo, ref.name());
             return ref;
         }
     }
@@ -45,11 +52,26 @@ pub const GitReferenceIterator = struct {
 
 pub const GitReference = struct {
     value: ?*c.git_reference = null,
+    _repo: GitRepository = undefined,
+    _reflog: GitReflog = undefined,
+
+    /// This function is a comparison function which compares lhs' first reflog entry creation time
+    /// with rhs'. When used resulting slice of `GitReference` will have earlier ref as first item.
+    pub fn lessThanFn(context: void, lhs: GitReference, rhs: GitReference) bool {
+        _ = context;
+        const lhs_reflog_entry = lhs.reflog().entryByIndex(lhs.reflog().entrycount() - 1);
+        const lhs_committer = lhs_reflog_entry.?.committer();
+        const rhs_reflog_entry = rhs.reflog().entryByIndex(rhs.reflog().entrycount() - 1);
+        const rhs_committer = rhs_reflog_entry.?.committer();
+
+        return lhs_committer.value.?.when.time < rhs_committer.value.?.when.time;
+    }
 
     pub fn lookup(repo: GitRepository, name_to_look: GitString) !GitReference {
-        var ref: GitReference = .{};
+        var ref: GitReference = .{ ._repo = repo };
         const res: c_int = c.git_reference_lookup(&ref.value, repo.value, @ptrCast(name_to_look));
         if (res == 0) {
+            ref._reflog = GitReflog.read(repo, name_to_look);
             return ref;
         } else if (res == c.GIT_ENOTFOUND) {
             return GitError.GIT_ENOTFOUND;
@@ -69,6 +91,10 @@ pub const GitReference = struct {
         }
 
         return str_array;
+    }
+
+    pub fn reflog(self: GitReference) GitReflog {
+        return self._reflog;
     }
 
     ///Ensure the reference name is well-formed.
@@ -155,6 +181,7 @@ pub const GitReference = struct {
 
 const GitError = @import("error.zig").GitError;
 const GitRepository = @import("repository.zig").GitRepository;
+const GitReflog = @import("reflog.zig").GitReflog;
 const GitStrArray = @import("types.zig").GitStrArray;
 const GitString = @import("types.zig").GitString;
 const cStringToGitString = @import("types.zig").cStringToGitString;

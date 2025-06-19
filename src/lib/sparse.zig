@@ -97,18 +97,26 @@ pub fn feature(
             });
         }
     } else {
-        var to = try Feature.new(.{
-            .alloc = allocator,
-            .name = feature_name,
-            .start_point = target,
-        });
-        defer to.free(allocator);
-        return try jump(.{
-            .allocator = allocator,
-            .to = &to,
-            .create = true,
-            .slice = _slice,
-        });
+        if (maybe_existing_feature) |*feature_to_go| {
+            return try jump(.{
+                .allocator = allocator,
+                .to = feature_to_go,
+                .slice = _slice,
+            });
+        } else {
+            var to = try Feature.new(.{
+                .alloc = allocator,
+                .name = feature_name,
+                .start_point = target,
+            });
+            defer to.free(allocator);
+            return try jump(.{
+                .allocator = allocator,
+                .to = &to,
+                .create = true,
+                .slice = _slice,
+            });
+        }
     }
 }
 

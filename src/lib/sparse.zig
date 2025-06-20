@@ -183,6 +183,7 @@ fn jump(o: struct {
     });
 }
 
+const LibGit = @import("libgit2/libgit2.zig");
 const constants = @import("constants.zig");
 const LibGit = @import("libgit2/libgit2.zig");
 const GitString = LibGit.GitString;
@@ -190,4 +191,4 @@ const GitBranch = LibGit.GitBranch;
 const GitBranchType = LibGit.GitBranchType;
 const Git = @import("system/Git.zig");
 const Feature = @import("Feature.zig");
-pub const Slice = @import("slice.zig");
+const Slice = @import("slice.zig");

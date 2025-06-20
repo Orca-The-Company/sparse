@@ -84,5 +84,4 @@ pub const FeatureCommand = struct {
 };
 
 const Sparse = @import("sparse_lib").Sparse;
-const LibGit = @import("sparse_lib").LibGit;
 const command = @import("command.zig");

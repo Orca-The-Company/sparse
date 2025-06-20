@@ -8,23 +8,30 @@ const Feature = @This();
 name: GitString,
 ref: ?GitString = null,
 start_point: ?GitString = null,
-slices: ?Git.Refs = null,
+slices: ?std.ArrayList(Slice) = null,
 
 pub fn new(o: struct {
     alloc: std.mem.Allocator,
     name: GitString,
     ref: ?GitString = null,
     start_point: ?GitString = null,
-    slices: ?Git.Refs = null,
+    slices: ?[]Slice = null,
 }) !Feature {
     const dup = try o.alloc.dupe(u8, o.name);
-
-    return Feature{
+    var f = Feature{
         .name = dup,
         .ref = if (o.ref) |r| try o.alloc.dupe(u8, r) else null,
         .start_point = if (o.start_point) |s| try o.alloc.dupe(u8, s) else null,
-        .slices = if (o.slices) |s| s else null,
     };
+    if (o.slices) |s| {
+        if (f.slices) |*fs| {
+            try fs.appendSlice(s);
+        } else {
+            f.slices = try std.ArrayList(Slice).initCapacity(o.alloc, s.len);
+            try f.slices.?.appendSlice(s);
+        }
+    }
+    return f;
 }
 
 pub fn free(self: *Feature, allocator: Allocator) void {
@@ -34,8 +41,8 @@ pub fn free(self: *Feature, allocator: Allocator) void {
     if (self.start_point) |s| {
         allocator.free(s);
     }
-    if (self.slices) |*s| {
-        s.free(allocator);
+    if (self.slices) |s| {
+        s.deinit();
     }
     allocator.free(self.name);
 }
@@ -89,59 +96,28 @@ pub fn findFeatureByName(o: struct {
 }) !?Feature {
     log.debug("findFeatureByName::", .{});
     // get all branch refs using git
-    var branch_refs = try Git.getBranchRefs(.{
-        .alloc = o.allocator,
+    const slice_array = try Slice.getAllSlicesWith(.{
+        .allocator = o.allocator,
+        .in_feature = o.feature_name,
     });
-    defer branch_refs.free(o.allocator);
+    defer o.allocator.free(slice_array);
 
     // ref format: refs/heads/sparse/<username>/<feature_name>/slice/<slice_name>
     //
-    const with_slice = try std.fmt.allocPrint(
-        o.allocator,
-        "{s}{s}/{s}/slice/",
-        .{
-            constants.BRANCH_REFS_PREFIX,
-            "havadartalha@gmail.com",
-            o.feature_name,
-        },
-    );
-    defer o.allocator.free(with_slice);
-    const without_slice = try std.fmt.allocPrint(
-        o.allocator,
-        "{s}{s}/{s}",
-        .{
-            constants.BRANCH_REFS_PREFIX,
-            "havadartalha@gmail.com",
-            o.feature_name,
-        },
-    );
-    defer o.allocator.free(without_slice);
-
-    for (branch_refs.list.items) |ref| {
-        if (std.mem.startsWith(u8, ref.refname, without_slice)) {
-            // found an existing branch check if it has slices
-            if (std.mem.startsWith(u8, ref.refname, with_slice)) {
-                // refs/heads/sparse/<username>/<feature_name>/slice/
-                const refs = try Git.getFeatureSliceRefs(.{
-                    .allocator = o.allocator,
-                    .feature_name = o.feature_name,
-                });
-
-                return try Feature.new(.{
-                    .alloc = o.allocator,
-                    .name = without_slice,
-                    .ref = ref.objectname,
-                    .slices = refs,
-                });
-            } else {
-                // this is weird.
-                // lets return an error for now we can think about recovery later
-                return try recoverFeatureWithName();
-            }
-        }
+    if (slice_array.len == 0) {
+        return null;
+        // TODO: check if we have something with feature name but dont have slices
+        // this is weird.
+        // lets return an error for now we can think about recovery later
+        //return try recoverFeatureWithName();
     }
 
-    return null;
+    return try Feature.new(.{
+        .alloc = o.allocator,
+        .name = sliceNameToFeatureName(slice_array[0].ref.name()),
+        .ref = cStringToGitString(slice_array[0].ref.target().?.str()),
+        .slices = slice_array,
+    });
 }
 
 pub fn recoverFeatureWithName() !Feature {
@@ -170,19 +146,19 @@ pub fn activate(self: *Feature, o: struct {
     defer o.allocator.free(slice_name);
 
     if (std.mem.eql(u8, o.slice_name, constants.LAST_SLICE_NAME_POINTER)) {
-        if (self.slices) |slice_refs| {
+        if (self.slices) |slice_array| {
             if (o.create) {
                 slice_name = try std.fmt.allocPrint(
                     o.allocator,
                     "{s}/{d}",
-                    .{ self.name, slice_refs.list.items.len + 1 },
+                    .{ self.name, slice_array.items.len + 1 },
                 );
             } else {
-                if (slice_refs.list.items.len > 0) {
+                if (slice_array.items.len > 0) {
                     slice_name = try std.fmt.allocPrint(
                         o.allocator,
                         "{s}",
-                        .{slice_refs.list.items[0].refname},
+                        .{slice_array.getLast().ref.name()},
                     );
                 } else {
                     slice_name = try std.fmt.allocPrint(o.allocator, "{s}/slice/1", .{self.name});
@@ -250,5 +226,7 @@ fn sliceNameToFeatureName(slice_name: []const u8) []const u8 {
 const constants = @import("constants.zig");
 const Git = @import("system/Git.zig");
 const GitString = @import("libgit2/types.zig").GitString;
+const cStringToGitString = @import("libgit2/types.zig").cStringToGitString;
 const utils = @import("utils.zig");
+const Slice = @import("slice.zig").Slice;
 const SparseError = @import("sparse.zig").Error;

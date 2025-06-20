@@ -16,6 +16,8 @@ pub fn feature(
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer std.debug.assert(gpa.deinit() == .ok);
     const allocator = gpa.allocator();
+    try LibGit.init();
+    defer LibGit.shutdown() catch @panic("Oops: couldn't shutdown libgit2, something weird is cooking...");
 
     log.debug("feature:: feature_name:{s} slice_name:{s} target:{s}", .{
         feature_name,
@@ -179,20 +181,6 @@ fn jump(o: struct {
         .create = o.create,
         .slice_name = o.slice,
     });
-    // const run_result = try Git.@"switch"(.{
-    //     .allocator = o.allocator,
-    //     .args = &.{
-    //         if (o.create) "-c" else "",
-    //         o.to.name[0],
-    //         if (o.to.start_point) |s| s else "",
-    //     },
-    // });
-    // defer o.allocator.free(run_result.stderr);
-    // defer o.allocator.free(run_result.stdout);
-
-    // if (run_result.term.Exited != 0) {
-    //     return Error.UNABLE_TO_SWITCH_BRANCHES;
-    // }
 }
 
 const constants = @import("constants.zig");
@@ -202,4 +190,4 @@ const GitBranch = LibGit.GitBranch;
 const GitBranchType = LibGit.GitBranchType;
 const Git = @import("system/Git.zig");
 const Feature = @import("Feature.zig");
-pub const Slice = @import("slice.zig");
+const Slice = @import("slice.zig");

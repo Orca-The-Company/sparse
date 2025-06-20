@@ -2,47 +2,60 @@ const std = @import("std");
 const log = std.log.scoped(.slice);
 const Allocator = std.mem.Allocator;
 
-///
-/// Returns all slices available with given constraints.
-///
-/// options:
-/// .inFeature(?[]const u8): feature to search slices in, if it is null
-///  function returns all slices ignoring which feature they are in.
-pub fn getAllSlicesWith(o: struct {
-    allocator: Allocator,
-    repo: LibGit.GitRepository,
-    inFeature: ?[]const u8 = null,
-}) !void {
-    var glob: []u8 = undefined;
-    if (o.inFeature) |f| {
-        glob = try std.fmt.allocPrint(
-            o.allocator,
-            "refs/heads/sparse/havadartalha@gmail.com/{s}/*",
-            .{f},
-        );
-    } else {
-        glob = try std.fmt.allocPrint(
-            o.allocator,
-            "refs/heads/sparse/havadartalha@gmail.com/*",
-            .{},
-        );
-    }
-    defer o.allocator.free(glob);
+pub const Slice = struct {
+    ref: GitReference,
+    ///
+    /// Returns all slices available with given constraints.
+    ///
+    /// options:
+    /// .in_feature(?[]const u8): feature to search slices in, if it is null
+    ///  function returns all slices ignoring which feature they are in.
+    pub fn getAllSlicesWith(o: struct {
+        allocator: Allocator,
+        in_feature: ?[]const u8 = null,
+    }) ![]Slice {
+        const repo = try GitRepository.open();
+        defer repo.free();
 
-    //std.fmt.allocPrint(o.allocator, comptime fmt: []const u8, args: anytype)
-    var ref_iter = try LibGit.GitReferenceIterator.fromGlob(glob, o.repo);
-    defer ref_iter.free();
-    while (try ref_iter.next()) |ref| {
-        const reflog = try LibGit.GitReflog.read(o.repo, ref.name());
-        defer reflog.free();
-        const last_entry = reflog.entryByIndex(reflog.entrycount() - 1).?;
-        const committer = last_entry.committer().value.?;
-        log.debug(
-            "getAllSlicesWith:: ref.name: {s} entrycount: {d} committer:{s} time:{d}",
-            .{ ref.name(), reflog.entrycount(), committer.email, committer.when.time },
-        );
+        var glob: []u8 = undefined;
+        if (o.in_feature) |f| {
+            glob = try std.fmt.allocPrint(
+                o.allocator,
+                "{s}havadartalha@gmail.com/{s}/slice/*",
+                .{ constants.BRANCH_REFS_PREFIX, f },
+            );
+        } else {
+            glob = try std.fmt.allocPrint(
+                o.allocator,
+                "{s}havadartalha@gmail.com/*",
+                .{
+                    constants.BRANCH_REFS_PREFIX,
+                },
+            );
+        }
+        defer o.allocator.free(glob);
+
+        var ref_iter = try GitReferenceIterator.fromGlob(glob, repo);
+        defer ref_iter.free();
+        var refs = std.ArrayListUnmanaged(GitReference).empty;
+        defer refs.deinit(o.allocator);
+        var slices = std.ArrayListUnmanaged(Slice).empty;
+        defer slices.deinit(o.allocator);
+
+        while (try ref_iter.next()) |ref| {
+            try refs.append(o.allocator, ref);
+        }
+        std.mem.sort(GitReference, refs.items, {}, GitReference.lessThanFn);
+        for (refs.items) |ref| {
+            try slices.append(o.allocator, .{ .ref = ref });
+        }
+
+        return try slices.toOwnedSlice(o.allocator);
     }
-}
-const Slice = struct {};
+};
 
 const LibGit = @import("libgit2/libgit2.zig");
+const GitReference = LibGit.GitReference;
+const GitReferenceIterator = LibGit.GitReferenceIterator;
+const GitRepository = LibGit.GitRepository;
+const constants = @import("constants.zig");

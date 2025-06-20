@@ -54,4 +54,3 @@ const GitError = @import("error.zig").GitError;
 const GitRepository = @import("repository.zig").GitRepository;
 const GitString = @import("types.zig").GitString;
 const GitSignature = @import("signature.zig").GitSignature;
-//const cStringToGitString = @import("types.zig").cStringToGitString;

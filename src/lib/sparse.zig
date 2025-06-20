@@ -183,7 +183,6 @@ fn jump(o: struct {
     });
 }
 
-const LibGit = @import("libgit2/libgit2.zig");
 const constants = @import("constants.zig");
 const LibGit = @import("libgit2/libgit2.zig");
 const GitString = LibGit.GitString;

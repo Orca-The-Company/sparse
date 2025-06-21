@@ -88,37 +88,38 @@ pub fn getHeadRef(o: struct {
 }
 
 pub fn getBranchRefs(o: struct {
-    allocator: std.mem.Allocator,
+    alloc: std.mem.Allocator,
     withHead: bool = true,
 }) !Refs {
     const refs_result = try @"show-ref"(.{
-        .allocator = o.allocator,
+        .allocator = o.alloc,
         .args = &.{ "--branches", (if (o.withHead) "--head" else "") },
     });
-    defer o.allocator.free(refs_result.stdout);
-    defer o.allocator.free(refs_result.stderr);
+    defer o.alloc.free(refs_result.stdout);
+    defer o.alloc.free(refs_result.stderr);
 
     if (refs_result.term.Exited == 0) {
         var lines = std.mem.splitScalar(u8, refs_result.stdout, '\n');
-        var refs = try Refs.new(o.allocator);
+        var refs = try Refs.new(o.alloc);
         while (lines.next()) |l| {
             const line = utils.trimString(l, .{});
             if (line.len > 0) {
                 // <objectname> <refname>
                 var vals = std.mem.splitScalar(u8, line, ' ');
                 const ref = try Ref.new(.{
-                    .alloc = o.allocator,
+                    .alloc = o.alloc,
                     .oname = vals.first(),
                     .rname = vals.rest(),
                 });
-                try refs.list.append(o.allocator, ref);
+                try refs.list.append(o.alloc, ref);
             }
         }
         return refs;
     }
 
-    log.debug("getBranchRefs:: unable to get refs", .{});
-    return SparseError.BACKEND_UNABLE_TO_GET_REFS;
+    log.debug("getBranchRefs:: unable to get refs returning empty", .{});
+
+    return try Refs.new(o.alloc);
 }
 
 pub fn getSparseRefs(o: struct {

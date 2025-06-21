@@ -52,6 +52,10 @@ pub const GitBranch = struct {
         }
         return cStringToGitString(c_string);
     }
+
+    pub fn free(self: GitBranch) void {
+        self.ref.free();
+    }
 };
 
 const GitString = @import("types.zig").GitString;

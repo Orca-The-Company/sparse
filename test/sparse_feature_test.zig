@@ -1,6 +1,6 @@
 const std = @import("std");
+const build_options = @import("build_options");
 const log = std.log.scoped(.sparse_feature_test);
-const debug = std.debug.print;
 const Allocator = std.mem.Allocator;
 const RunResult = std.process.Child.RunResult;
 
@@ -26,6 +26,7 @@ pub const SparseFeatureTest = struct {
         //_ = repo_dir;
         //
 
+        std.testing.log_level = .debug;
         const rr_temp_dir = try system.system(.{
             .allocator = alloc,
             .args = &.{
@@ -46,6 +47,10 @@ pub const SparseFeatureTest = struct {
             .args = &.{ "init", "." },
             .cwd = data.repo_dir.?,
         });
+        log.debug(
+            "sparse::feature::test:: repo_dir {s}",
+            .{data.repo_dir.?},
+        );
         defer alloc.free(rr_git_init.stdout);
         defer alloc.free(rr_git_init.stderr);
 
@@ -63,7 +68,6 @@ pub const SparseFeatureTest = struct {
         _ = self;
 
         const test_data: TestData = @as(TestData, data);
-        defer test_data.free(alloc);
         std.testing.log_level = .debug;
         log.info("repo_dir {s}\n", .{test_data.repo_dir.?});
         const rr_temp_dir = try system.system(.{
@@ -74,15 +78,49 @@ pub const SparseFeatureTest = struct {
                 test_data.repo_dir.?,
             },
         });
+        log.info("stdout {s}\n", .{rr_temp_dir.stdout});
         defer alloc.free(rr_temp_dir.stdout);
         defer alloc.free(rr_temp_dir.stderr);
-    }
-    // pub fn run(self: SparseFeatureTest, alloc: Allocator) !u8 {
-    //     _ = self;
-    //     _ = alloc;
-    // }
-};
 
+        try std.testing.expect(rr_temp_dir.term.Exited == 0);
+        try std.testing.expect(std.mem.eql(u8, rr_temp_dir.stderr, ""));
+        try std.testing.expect(std.mem.eql(u8, rr_temp_dir.stdout, ""));
+    }
+    pub fn run(
+        self: SparseFeatureTest,
+        alloc: Allocator,
+        comptime T: anytype,
+        data: T,
+        comptime func: fn (Allocator, T) IntegrationTestError!bool,
+    ) IntegrationTestError!bool {
+        _ = self;
+        if (try func(alloc, data)) {
+            return true;
+        }
+        return false;
+    }
+};
+pub fn createFeature(alloc: Allocator, data: TestData) IntegrationTestError!bool {
+    std.testing.log_level = .debug;
+    const rr_temp_dir = system.system(.{
+        .allocator = alloc,
+        .args = &.{
+            build_options.sparse_exe_path,
+            "feature",
+            "myNewFeature",
+        },
+        .cwd = data.repo_dir.?,
+    }) catch return IntegrationTestError.UNEXPECTED_ERROR;
+    defer alloc.free(rr_temp_dir.stdout);
+    defer alloc.free(rr_temp_dir.stderr);
+    //_ = rr_temp_dir;
+    log.debug(
+        "sparse::feature::test:: createFeature stdout: {s}\n stderr:{s}\n",
+        .{ rr_temp_dir.stdout, rr_temp_dir.stderr },
+    );
+    return true;
+}
 const sparse = @import("sparse");
 const system = @import("system.zig");
 const integration_test = @import("integration.zig");
+const IntegrationTestError = integration_test.IntegrationTestError;

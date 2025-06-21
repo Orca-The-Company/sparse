@@ -1,30 +1,42 @@
 const std = @import("std");
 
-/// refs/heads/sparse/<sparse.user.id>
+/// if o.all is set to true
+///     returns 'refs/heads/sparse/'
+/// otherwise returns 'refs/heads/sparse/<sparse.user.id>'
+///
 pub fn sparseBranchRefPrefix(
     o: struct {
         alloc: std.mem.Allocator,
         repo: ?GitRepository = null,
+        all: bool = false,
     },
 ) ![]const u8 {
     var user_id: []const u8 = undefined;
     defer o.alloc.free(user_id);
 
-    if (o.repo == null) {
-        try LibGit.init();
-        defer LibGit.shutdown() catch @panic("Oops: couldn't shutdown libgit2, something weird is cooking...");
-        const repo = try GitRepository.open();
-        defer repo.free();
-        user_id = try SparseConfig.userId(o.alloc, repo);
+    if (o.all) {
+        return try std.fmt.allocPrint(
+            o.alloc,
+            "{s}",
+            .{constants.BRANCH_REFS_PREFIX},
+        );
     } else {
-        user_id = try SparseConfig.userId(o.alloc, o.repo.?);
-    }
+        if (o.repo == null) {
+            try LibGit.init();
+            defer LibGit.shutdown() catch @panic("Oops: couldn't shutdown libgit2, something weird is cooking...");
+            const repo = try GitRepository.open();
+            defer repo.free();
+            user_id = try SparseConfig.userId(o.alloc, repo);
+        } else {
+            user_id = try SparseConfig.userId(o.alloc, o.repo.?);
+        }
 
-    return try std.fmt.allocPrint(
-        o.alloc,
-        "{s}{s}",
-        .{ constants.BRANCH_REFS_PREFIX, user_id },
-    );
+        return try std.fmt.allocPrint(
+            o.alloc,
+            "{s}{s}",
+            .{ constants.BRANCH_REFS_PREFIX, user_id },
+        );
+    }
 }
 
 pub fn combine(

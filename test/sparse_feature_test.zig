@@ -4,13 +4,20 @@ const log = std.log.scoped(.sparse_feature_test);
 const Allocator = std.mem.Allocator;
 const RunResult = std.process.Child.RunResult;
 
-const mystruct = @This();
 pub const TestData = struct {
     repo_dir: ?[]const u8 = null,
     pub fn free(self: TestData, alloc: Allocator) void {
         if (self.repo_dir) |repo_dir| {
             alloc.free(repo_dir);
         }
+    }
+};
+pub const TestResult = struct {
+    err: IntegrationTestError = IntegrationTestError.UNEXPECTED_ERROR,
+    exit_code: u8 = 1,
+
+    pub fn status(self: TestResult) bool {
+        return self.exit_code == 0;
     }
 };
 
@@ -91,16 +98,13 @@ pub const SparseFeatureTest = struct {
         alloc: Allocator,
         comptime T: anytype,
         data: T,
-        comptime func: fn (Allocator, T) IntegrationTestError!bool,
-    ) IntegrationTestError!bool {
+        comptime func: fn (Allocator, T) IntegrationTestResult,
+    ) IntegrationTestResult {
         _ = self;
-        if (try func(alloc, data)) {
-            return true;
-        }
-        return false;
+        return func(alloc, data);
     }
 };
-pub fn createCommitOnTarget(alloc: Allocator, data: TestData) IntegrationTestError!bool {
+pub fn createCommitOnTarget(alloc: Allocator, data: TestData) IntegrationTestResult {
     std.testing.log_level = .debug;
     const rr_new_file = system.system(.{
         .allocator = alloc,
@@ -109,7 +113,8 @@ pub fn createCommitOnTarget(alloc: Allocator, data: TestData) IntegrationTestErr
             "test.txt",
         },
         .cwd = data.repo_dir.?,
-    }) catch return IntegrationTestError.UNEXPECTED_ERROR;
+    }) catch return .{ .feature = .{ .err = IntegrationTestError.TERM_EXIT_FAILED } };
+
     defer alloc.free(rr_new_file.stdout);
     defer alloc.free(rr_new_file.stderr);
 
@@ -121,7 +126,7 @@ pub fn createCommitOnTarget(alloc: Allocator, data: TestData) IntegrationTestErr
             .args = &.{ "add", "." },
             .cwd = data.repo_dir.?,
         },
-    ) catch return IntegrationTestError.UNEXPECTED_ERROR;
+    ) catch return .{ .feature = .{ .err = IntegrationTestError.TERM_EXIT_FAILED } };
     defer alloc.free(rr_git_add.stdout);
     defer alloc.free(rr_git_add.stderr);
 
@@ -130,17 +135,13 @@ pub fn createCommitOnTarget(alloc: Allocator, data: TestData) IntegrationTestErr
         .allocator = alloc,
         .args = &.{ "commit", "-m", "first commit" },
         .cwd = data.repo_dir.?,
-    }) catch return IntegrationTestError.UNEXPECTED_ERROR;
+    }) catch return .{ .feature = .{ .err = IntegrationTestError.TERM_EXIT_FAILED } };
     defer alloc.free(rr_git_commit.stdout);
     defer alloc.free(rr_git_commit.stderr);
 
-    std.testing.expect(rr_git_commit.term.Exited == 0) catch {
-        return IntegrationTestError.UNEXPECTED_ERROR;
-    };
-
-    return true;
+    return .{ .feature = .{ .exit_code = 0 } };
 }
-pub fn createFeature(alloc: Allocator, data: TestData) IntegrationTestError!bool {
+pub fn createFeature(alloc: Allocator, data: TestData) IntegrationTestResult {
     std.testing.log_level = .debug;
     const rr_temp_dir = system.system(.{
         .allocator = alloc,
@@ -150,7 +151,7 @@ pub fn createFeature(alloc: Allocator, data: TestData) IntegrationTestError!bool
             "myNewFeature",
         },
         .cwd = data.repo_dir.?,
-    }) catch return IntegrationTestError.UNEXPECTED_ERROR;
+    }) catch return .{ .feature = .{ .err = IntegrationTestError.TERM_EXIT_FAILED } };
     defer alloc.free(rr_temp_dir.stdout);
     defer alloc.free(rr_temp_dir.stderr);
     //_ = rr_temp_dir;
@@ -158,9 +159,10 @@ pub fn createFeature(alloc: Allocator, data: TestData) IntegrationTestError!bool
         "sparse::feature::test:: createFeature stdout: {s}\n stderr:{s}\n",
         .{ rr_temp_dir.stdout, rr_temp_dir.stderr },
     );
-    return true;
+    return .{ .feature = .{ .exit_code = 0 } };
 }
 const sparse = @import("sparse");
 const system = @import("system.zig");
 const integration_test = @import("integration.zig");
+const IntegrationTestResult = integration_test.IntegrationTestResult;
 const IntegrationTestError = integration_test.IntegrationTestError;

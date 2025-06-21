@@ -23,7 +23,7 @@ pub const Slice = struct {
         });
         defer o.alloc.free(sparse_ref_prefix);
 
-        var glob: []u8 = undefined;
+        var glob: []const u8 = undefined;
         if (o.in_feature) |f| {
             glob = try std.fmt.allocPrint(
                 o.alloc,

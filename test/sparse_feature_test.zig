@@ -100,6 +100,46 @@ pub const SparseFeatureTest = struct {
         return false;
     }
 };
+pub fn createCommitOnTarget(alloc: Allocator, data: TestData) IntegrationTestError!bool {
+    std.testing.log_level = .debug;
+    const rr_new_file = system.system(.{
+        .allocator = alloc,
+        .args = &.{
+            "touch",
+            "test.txt",
+        },
+        .cwd = data.repo_dir.?,
+    }) catch return IntegrationTestError.UNEXPECTED_ERROR;
+    defer alloc.free(rr_new_file.stdout);
+    defer alloc.free(rr_new_file.stderr);
+
+    //try std.testing.expect(rr_new_file.term.Exited == 0);
+
+    const rr_git_add = system.git(
+        .{
+            .allocator = alloc,
+            .args = &.{ "add", "." },
+            .cwd = data.repo_dir.?,
+        },
+    ) catch return IntegrationTestError.UNEXPECTED_ERROR;
+    defer alloc.free(rr_git_add.stdout);
+    defer alloc.free(rr_git_add.stderr);
+
+    //try std.testing.expect(rr_git_add.term.Exited == 0);
+    const rr_git_commit = system.git(.{
+        .allocator = alloc,
+        .args = &.{ "commit", "-m", "first commit" },
+        .cwd = data.repo_dir.?,
+    }) catch return IntegrationTestError.UNEXPECTED_ERROR;
+    defer alloc.free(rr_git_commit.stdout);
+    defer alloc.free(rr_git_commit.stderr);
+
+    std.testing.expect(rr_git_commit.term.Exited == 0) catch {
+        return IntegrationTestError.UNEXPECTED_ERROR;
+    };
+
+    return true;
+}
 pub fn createFeature(alloc: Allocator, data: TestData) IntegrationTestError!bool {
     std.testing.log_level = .debug;
     const rr_temp_dir = system.system(.{

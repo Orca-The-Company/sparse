@@ -28,3 +28,5 @@ pub const GitRevSpec = @import("revspec.zig").GitRevSpec;
 pub const GitReflog = @import("reflog.zig").GitReflog;
 pub const GitReflogEntry = @import("reflog.zig").GitReflogEntry;
 pub const GitSignature = @import("signature.zig").GitSignature;
+pub const GitConfig = @import("config.zig").GitConfig;
+pub const GitConfigEntry = @import("config.zig").GitConfigEntry;

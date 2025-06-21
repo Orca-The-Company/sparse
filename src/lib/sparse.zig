@@ -40,7 +40,7 @@ pub fn feature(
     }
 
     var maybe_existing_feature = try Feature.findFeatureByName(.{
-        .allocator = allocator,
+        .alloc = allocator,
         .feature_name = feature_name,
     });
     defer {

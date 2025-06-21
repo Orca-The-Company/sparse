@@ -149,7 +149,34 @@ fn jump(o: struct {
             o.create,
         },
     );
+    try LibGit.init();
+    defer LibGit.shutdown() catch {
+        @panic("Oops: couldn't shutdown libgit2, something weird is cooking...");
+    };
+    const repo = try LibGit.GitRepository.open();
+    defer repo.free();
+
     // TODO: handle gracefully saving things for current feature (`from`)
+    // TODO: test if it is possible to use start_point as remote branch
+
+    if (o.to.start_point) |start_point| {
+        // check if start_point of `to` is valid
+        const branch = GitBranch.lookup(
+            repo,
+            start_point,
+            GitBranchType.git_branch_all,
+        ) catch |err| res: {
+            switch (err) {
+                LibGit.GitError.GIT_ENOTFOUND => {
+                    o.allocator.free(start_point);
+                    o.to.start_point = null;
+                    break :res GitBranch{ .ref = .{} };
+                },
+                else => return err,
+            }
+        };
+        defer branch.free();
+    }
 
     try o.to.activate(.{
         .allocator = o.allocator,
@@ -173,6 +200,9 @@ fn jump(o: struct {
 }
 
 const constants = @import("constants.zig");
-const GitString = @import("libgit2/types.zig").GitString;
+const LibGit = @import("libgit2/libgit2.zig");
+const GitString = LibGit.GitString;
+const GitBranch = LibGit.GitBranch;
+const GitBranchType = LibGit.GitBranchType;
 const Git = @import("system/Git.zig");
 const Feature = @import("Feature.zig");

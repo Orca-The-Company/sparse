@@ -48,7 +48,11 @@ pub fn free(self: *Feature, allocator: Allocator) void {
 pub fn activeFeature(o: struct {
     allocator: Allocator,
 }) !?Feature {
-    const head_ref = try Git.getHeadRef(.{ .allocator = o.allocator });
+    log.debug("activeFeature::", .{});
+    const head_ref = Git.getHeadRef(.{ .allocator = o.allocator }) catch |err| switch (err) {
+        error.BACKEND_UNABLE_TO_DETERMINE_CURRENT_BRANCH => return null,
+        else => return err,
+    };
     defer head_ref.free(o.allocator);
 
     log.debug(
@@ -83,9 +87,10 @@ pub fn findFeatureByName(o: struct {
     allocator: Allocator,
     feature_name: []const u8,
 }) !?Feature {
+    log.debug("findFeatureByName::", .{});
     // get all branch refs using git
     var branch_refs = try Git.getBranchRefs(.{
-        .allocator = o.allocator,
+        .alloc = o.allocator,
     });
     defer branch_refs.free(o.allocator);
 

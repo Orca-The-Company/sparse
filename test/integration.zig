@@ -118,6 +118,12 @@ test "Create Sparse Feature with only feature name" {
         test_allocator,
         SparseFeatureTestData,
         data,
+        sparse_feature_test.createCommitOnTarget,
+    );
+    _ = try feature_integration.run(
+        test_allocator,
+        SparseFeatureTestData,
+        data,
         sparse_feature_test.createFeature,
     );
     //try feature_integration.teardown(test_allocator, data);

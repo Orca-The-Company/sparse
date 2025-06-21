@@ -76,13 +76,13 @@ pub fn activeFeature(o: struct {
     });
     defer o.allocator.free(slice_array);
 
-    for (slice_array) |ref| {
+    for (slice_array) |slice| {
         // we are in sparse feature
-        if (std.mem.eql(u8, ref.ref.name(), head_ref.refname)) {
+        if (std.mem.eql(u8, slice.ref.name(), head_ref.refname)) {
             return try Feature.new(.{
                 .alloc = o.allocator,
-                .name = sliceNameToFeatureName(ref.ref.name()),
-                .ref = cStringToGitString(ref.ref.target().?.str()),
+                .name = sliceNameToFeatureName(slice.ref.name()),
+                .ref = cStringToGitString(slice.ref.target().?.str()),
             });
         }
     }
@@ -203,7 +203,7 @@ pub fn activate(self: *Feature, o: struct {
     log.debug("switch result: stdout:{s} stderr:{s}", .{ rr.stdout, rr.stderr });
 }
 
-fn asFeatureName(alloc: std.mem.Allocator, name: []const u8) ![]const u8 {
+fn asFeatureName(alloc: Allocator, name: []const u8) ![]const u8 {
     if (std.mem.startsWith(u8, name, "refs/heads/sparse/")) {
         // already a sparse feature name it seems
         return std.fmt.allocPrint(alloc, "{s}", .{name});

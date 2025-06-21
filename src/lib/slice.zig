@@ -64,6 +64,7 @@ pub const Slice = struct {
 const utils = @import("utils.zig");
 const LibGit = @import("libgit2/libgit2.zig");
 const GitConfig = LibGit.GitConfig;
+const GitBranch = LibGit.GitBranch;
 const GitReference = LibGit.GitReference;
 const GitReferenceIterator = LibGit.GitReferenceIterator;
 const GitRepository = LibGit.GitRepository;

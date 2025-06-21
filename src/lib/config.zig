@@ -2,7 +2,11 @@ const std = @import("std");
 const log = std.log.scoped(.sparse_config);
 
 pub const SparseConfig = struct {
-    pub fn userId(repo: GitRepository) !GitString {
+    /// Returns the `sparse.user.id` git config value if it exists otherwise
+    /// it fallbacks to try and get `user.email` git config value and checks if
+    /// the config value we got is valid branch name or not since we are using
+    /// this value to create branches
+    pub fn userId(alloc: std.mem.Allocator, repo: GitRepository) !GitString {
         log.debug("userId::", .{});
         const config = try GitConfig.repositoryConfig(repo);
         defer config.free();
@@ -14,13 +18,17 @@ pub const SparseConfig = struct {
             };
             break :res val;
         };
+        defer sparse_user_id.free();
         const valid = try GitBranch.isNameValid(cStringToGitString(sparse_user_id.value.?.value));
         log.debug("userId:: sparse_user_id:{s} is_valid:{any}", .{ sparse_user_id.value.?.value, valid });
         if (!valid) {
             log.err("userId:: invalid 'sparse.user.id' or 'user.email' ('{s}'). See git-check-ref-format for valid options.", .{sparse_user_id.value.?.value});
             return GitError.UNEXPECTED_ERROR;
         }
-        return cStringToGitString(sparse_user_id.value.?.value);
+        return try alloc.dupe(
+            u8,
+            cStringToGitString(sparse_user_id.value.?.value),
+        );
     }
     pub fn setUserId(repo: GitRepository, value: GitString) void {
         _ = repo;

@@ -157,36 +157,40 @@ pub fn getSparseRefs(o: struct {
     return SparseError.BACKEND_UNABLE_TO_GET_REFS;
 }
 pub fn getFeatureSliceRefs(o: struct {
-    allocator: std.mem.Allocator,
+    alloc: std.mem.Allocator,
     feature_name: []const u8,
 }) !Refs {
+    const sparse_prefix = try utils.sparseBranchRefPrefix(.{
+        .alloc = o.alloc,
+    });
+    defer o.alloc.free(sparse_prefix);
     const pattern = try std.fmt.allocPrint(
-        o.allocator,
-        "refs/heads/sparse/{s}/{s}/slice/",
+        o.alloc,
+        "{s}/{s}/slice/",
         .{
-            "havadartalha@gmail.com",
+            sparse_prefix,
             o.feature_name,
         },
     );
-    defer o.allocator.free(pattern);
+    defer o.alloc.free(pattern);
 
     // refs/heads/sparse/<username>/<feature_name>/slice/
     const rr = try @"for-each-ref"(.{
-        .allocator = o.allocator,
+        .allocator = o.alloc,
         .args = &.{ "--sort=-committerdate", pattern, "--format=%(objectname) %(refname)" },
     });
-    defer o.allocator.free(rr.stderr);
-    defer o.allocator.free(rr.stdout);
+    defer o.alloc.free(rr.stderr);
+    defer o.alloc.free(rr.stdout);
 
     if (rr.term.Exited == 0) {
         var rr_iter = std.mem.splitScalar(u8, rr.stdout, '\n');
-        var refs: Refs = try Refs.new(o.allocator);
+        var refs: Refs = try Refs.new(o.alloc);
         while (rr_iter.next()) |ref_line| {
             var line_iter = std.mem.splitScalar(u8, ref_line, ' ');
             const objectname = line_iter.first();
             const refname = line_iter.rest();
-            try refs.list.append(o.allocator, try Ref.new(.{
-                .alloc = o.allocator,
+            try refs.list.append(o.alloc, try Ref.new(.{
+                .alloc = o.alloc,
                 .rname = refname,
                 .oname = objectname,
             }));

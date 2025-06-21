@@ -71,18 +71,18 @@ pub fn activeFeature(o: struct {
     );
 
     // now we can search for sparse refs
-    var sparse_refs = try Git.getSparseRefs(.{
-        .allocator = o.allocator,
+    const slice_array = try Slice.getAllSlicesWith(.{
+        .alloc = o.allocator,
     });
-    defer sparse_refs.free(o.allocator);
+    defer o.allocator.free(slice_array);
 
-    for (sparse_refs.list.items) |ref| {
+    for (slice_array) |ref| {
         // we are in sparse feature
-        if (std.mem.eql(u8, ref.refname, head_ref.refname)) {
+        if (std.mem.eql(u8, ref.ref.name(), head_ref.refname)) {
             return try Feature.new(.{
                 .alloc = o.allocator,
-                .name = sliceNameToFeatureName(ref.refname),
-                .ref = ref.objectname,
+                .name = sliceNameToFeatureName(ref.ref.name()),
+                .ref = cStringToGitString(ref.ref.target().?.str()),
             });
         }
     }
@@ -91,16 +91,16 @@ pub fn activeFeature(o: struct {
 }
 
 pub fn findFeatureByName(o: struct {
-    allocator: Allocator,
+    alloc: Allocator,
     feature_name: []const u8,
 }) !?Feature {
     log.debug("findFeatureByName::", .{});
     // get all branch refs using git
     const slice_array = try Slice.getAllSlicesWith(.{
-        .allocator = o.allocator,
+        .alloc = o.alloc,
         .in_feature = o.feature_name,
     });
-    defer o.allocator.free(slice_array);
+    defer o.alloc.free(slice_array);
 
     // ref format: refs/heads/sparse/<username>/<feature_name>/slice/<slice_name>
     //
@@ -113,7 +113,7 @@ pub fn findFeatureByName(o: struct {
     }
 
     return try Feature.new(.{
-        .alloc = o.allocator,
+        .alloc = o.alloc,
         .name = sliceNameToFeatureName(slice_array[0].ref.name()),
         .ref = cStringToGitString(slice_array[0].ref.target().?.str()),
         .slices = slice_array,
@@ -203,16 +203,17 @@ pub fn activate(self: *Feature, o: struct {
     log.debug("switch result: stdout:{s} stderr:{s}", .{ rr.stdout, rr.stderr });
 }
 
-fn asFeatureName(allocator: std.mem.Allocator, name: []const u8) ![]const u8 {
+fn asFeatureName(alloc: std.mem.Allocator, name: []const u8) ![]const u8 {
     if (std.mem.startsWith(u8, name, "refs/heads/sparse/")) {
         // already a sparse feature name it seems
-        return std.fmt.allocPrint(allocator, "{s}", .{name});
+        return std.fmt.allocPrint(alloc, "{s}", .{name});
     }
-    // refs/heads/sparse/<usermail>/<feature_name>
-    //
-    return try std.fmt.allocPrint(allocator, "{s}{s}/{s}", .{
-        constants.BRANCH_REFS_PREFIX,
-        "havadartalha@gmail.com",
+    const sparse_prefix = try utils.sparseBranchRefPrefix(.{
+        .alloc = alloc,
+    });
+    defer alloc.free(sparse_prefix);
+    return try std.fmt.allocPrint(alloc, "{s}/{s}", .{
+        sparse_prefix,
         name,
     });
 }

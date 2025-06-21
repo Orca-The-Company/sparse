@@ -5,7 +5,16 @@ const Allocator = std.mem.Allocator;
 const log = std.log.scoped(.integration);
 const build_options = @import("build_options");
 pub const IntegrationTestError = error{
+    TERM_EXIT_FAILED,
     UNEXPECTED_ERROR,
+};
+pub const IntegrationTestResult = union(enum) {
+    feature: SparseFeatureTestResult,
+    pub fn status(self: IntegrationTestResult) bool {
+        switch (self) {
+            inline else => |test_result| return test_result.status(),
+        }
+    }
 };
 
 pub const IntegrationTest = union(enum) {
@@ -39,8 +48,8 @@ pub const IntegrationTest = union(enum) {
         alloc: Allocator,
         comptime T: anytype,
         data: T,
-        comptime func: fn (Allocator, T) bool,
-    ) IntegrationTestError!bool {
+        comptime func: fn (Allocator, T) IntegrationTestResult,
+    ) IntegrationTestResult {
         switch (self) {
             inline else => |integration_test| return try integration_test.run(
                 alloc,
@@ -90,7 +99,7 @@ test "Create Sparse Feature to default target with only feature name" {
         SparseFeatureTestData,
     );
     defer data.free(test_allocator);
-    _ = try feature_integration.run(
+    _ = feature_integration.run(
         test_allocator,
         SparseFeatureTestData,
         data,
@@ -114,13 +123,17 @@ test "Create Sparse Feature with only feature name" {
         SparseFeatureTestData,
     );
     defer data.free(test_allocator);
-    _ = try feature_integration.run(
+    const create_commit_result: IntegrationTestResult = feature_integration.run(
         test_allocator,
         SparseFeatureTestData,
         data,
         sparse_feature_test.createCommitOnTarget,
     );
-    _ = try feature_integration.run(
+    // try std.testing.expect(create_commit_result.status());
+    if (!create_commit_result.status()) {
+        log.err("exit_code: {d}", .{create_commit_result.feature.exit_code});
+    }
+    _ = feature_integration.run(
         test_allocator,
         SparseFeatureTestData,
         data,
@@ -138,3 +151,4 @@ const system = @import("system.zig");
 const SparseFeatureTest = @import("sparse_feature_test.zig").SparseFeatureTest;
 const sparse_feature_test = @import("sparse_feature_test.zig");
 const SparseFeatureTestData = @import("sparse_feature_test.zig").TestData;
+const SparseFeatureTestResult = @import("sparse_feature_test.zig").TestResult;

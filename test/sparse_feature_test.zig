@@ -107,7 +107,7 @@ pub const SparseFeatureTest = struct {
         return func(alloc, data);
     }
 };
-pub fn createFeature(alloc: Allocator, data: TestData) IntegrationTestResult {
+pub fn createFeatureStep(alloc: Allocator, data: TestData) IntegrationTestResult {
     std.testing.log_level = .debug;
     createCommitOnTarget(alloc, data) catch return .{
         .feature = .{
@@ -122,7 +122,7 @@ pub fn createFeature(alloc: Allocator, data: TestData) IntegrationTestResult {
         .args = &.{
             build_options.sparse_exe_path,
             "feature",
-            "myNewFeature",
+            data.feature_name.?,
         },
         .cwd = data.repo_dir.?,
     }) catch return .{
@@ -133,7 +133,6 @@ pub fn createFeature(alloc: Allocator, data: TestData) IntegrationTestResult {
     };
     defer alloc.free(rr_temp_dir.stdout);
     defer alloc.free(rr_temp_dir.stderr);
-    //_ = rr_temp_dir;
     log.debug(
         "sparse::feature::test:: createFeature stdout: {s}\n stderr:{s}\n",
         .{ rr_temp_dir.stdout, rr_temp_dir.stderr },
@@ -154,8 +153,6 @@ fn createCommitOnTarget(alloc: Allocator, data: TestData) !void {
     defer alloc.free(rr_new_file.stdout);
     defer alloc.free(rr_new_file.stderr);
 
-    //try std.testing.expect(rr_new_file.term.Exited == 0);
-
     const rr_git_add = try system.git(
         .{
             .allocator = alloc,
@@ -166,7 +163,6 @@ fn createCommitOnTarget(alloc: Allocator, data: TestData) !void {
     defer alloc.free(rr_git_add.stdout);
     defer alloc.free(rr_git_add.stderr);
 
-    //try std.testing.expect(rr_git_add.term.Exited == 0);
     const rr_git_commit = try system.git(.{
         .allocator = alloc,
         .args = &.{ "commit", "-m", "first commit" },
@@ -174,8 +170,6 @@ fn createCommitOnTarget(alloc: Allocator, data: TestData) !void {
     });
     defer alloc.free(rr_git_commit.stdout);
     defer alloc.free(rr_git_commit.stderr);
-
-    // return .{ .feature = .{ .exit_code = 0 } };
 }
 const sparse = @import("sparse");
 const system = @import("system.zig");

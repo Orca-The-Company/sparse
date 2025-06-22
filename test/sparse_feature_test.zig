@@ -3,9 +3,9 @@ const build_options = @import("build_options");
 const log = std.log.scoped(.sparse_feature_test);
 const Allocator = std.mem.Allocator;
 const RunResult = std.process.Child.RunResult;
-
 pub const TestData = struct {
     repo_dir: ?[]const u8 = null,
+    feature_name: ?[]const u8 = null,
     pub fn free(self: TestData, alloc: Allocator) void {
         if (self.repo_dir) |repo_dir| {
             alloc.free(repo_dir);
@@ -13,7 +13,10 @@ pub const TestData = struct {
     }
 };
 pub const TestResult = struct {
-    err: IntegrationTestError = IntegrationTestError.UNEXPECTED_ERROR,
+    error_context: ?struct {
+        err: IntegrationTestError,
+        err_msg: ?[]const u8 = null,
+    } = null,
     exit_code: u8 = 1,
 
     pub fn status(self: TestResult) bool {
@@ -104,45 +107,16 @@ pub const SparseFeatureTest = struct {
         return func(alloc, data);
     }
 };
-pub fn createCommitOnTarget(alloc: Allocator, data: TestData) IntegrationTestResult {
-    std.testing.log_level = .debug;
-    const rr_new_file = system.system(.{
-        .allocator = alloc,
-        .args = &.{
-            "touch",
-            "test.txt",
-        },
-        .cwd = data.repo_dir.?,
-    }) catch return .{ .feature = .{ .err = IntegrationTestError.TERM_EXIT_FAILED } };
-
-    defer alloc.free(rr_new_file.stdout);
-    defer alloc.free(rr_new_file.stderr);
-
-    //try std.testing.expect(rr_new_file.term.Exited == 0);
-
-    const rr_git_add = system.git(
-        .{
-            .allocator = alloc,
-            .args = &.{ "add", "." },
-            .cwd = data.repo_dir.?,
-        },
-    ) catch return .{ .feature = .{ .err = IntegrationTestError.TERM_EXIT_FAILED } };
-    defer alloc.free(rr_git_add.stdout);
-    defer alloc.free(rr_git_add.stderr);
-
-    //try std.testing.expect(rr_git_add.term.Exited == 0);
-    const rr_git_commit = system.git(.{
-        .allocator = alloc,
-        .args = &.{ "commit", "-m", "first commit" },
-        .cwd = data.repo_dir.?,
-    }) catch return .{ .feature = .{ .err = IntegrationTestError.TERM_EXIT_FAILED } };
-    defer alloc.free(rr_git_commit.stdout);
-    defer alloc.free(rr_git_commit.stderr);
-
-    return .{ .feature = .{ .exit_code = 0 } };
-}
 pub fn createFeature(alloc: Allocator, data: TestData) IntegrationTestResult {
     std.testing.log_level = .debug;
+    createCommitOnTarget(alloc, data) catch return .{
+        .feature = .{
+            .exit_code = 1,
+            .error_context = .{
+                .err = IntegrationTestError.TERM_EXIT_FAILED,
+            },
+        },
+    };
     const rr_temp_dir = system.system(.{
         .allocator = alloc,
         .args = &.{
@@ -151,7 +125,12 @@ pub fn createFeature(alloc: Allocator, data: TestData) IntegrationTestResult {
             "myNewFeature",
         },
         .cwd = data.repo_dir.?,
-    }) catch return .{ .feature = .{ .err = IntegrationTestError.TERM_EXIT_FAILED } };
+    }) catch return .{
+        .feature = .{
+            .exit_code = 1,
+            .error_context = .{ .err = IntegrationTestError.TERM_EXIT_FAILED },
+        },
+    };
     defer alloc.free(rr_temp_dir.stdout);
     defer alloc.free(rr_temp_dir.stderr);
     //_ = rr_temp_dir;
@@ -160,6 +139,43 @@ pub fn createFeature(alloc: Allocator, data: TestData) IntegrationTestResult {
         .{ rr_temp_dir.stdout, rr_temp_dir.stderr },
     );
     return .{ .feature = .{ .exit_code = 0 } };
+}
+fn createCommitOnTarget(alloc: Allocator, data: TestData) !void {
+    std.testing.log_level = .debug;
+    const rr_new_file = try system.system(.{
+        .allocator = alloc,
+        .args = &.{
+            "touch",
+            "test.txt",
+        },
+        .cwd = data.repo_dir.?,
+    });
+
+    defer alloc.free(rr_new_file.stdout);
+    defer alloc.free(rr_new_file.stderr);
+
+    //try std.testing.expect(rr_new_file.term.Exited == 0);
+
+    const rr_git_add = try system.git(
+        .{
+            .allocator = alloc,
+            .args = &.{ "add", "." },
+            .cwd = data.repo_dir.?,
+        },
+    );
+    defer alloc.free(rr_git_add.stdout);
+    defer alloc.free(rr_git_add.stderr);
+
+    //try std.testing.expect(rr_git_add.term.Exited == 0);
+    const rr_git_commit = try system.git(.{
+        .allocator = alloc,
+        .args = &.{ "commit", "-m", "first commit" },
+        .cwd = data.repo_dir.?,
+    });
+    defer alloc.free(rr_git_commit.stdout);
+    defer alloc.free(rr_git_commit.stderr);
+
+    // return .{ .feature = .{ .exit_code = 0 } };
 }
 const sparse = @import("sparse");
 const system = @import("system.zig");

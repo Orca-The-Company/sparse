@@ -53,14 +53,14 @@ pub fn free(self: *Feature, allocator: Allocator) void {
 ///
 /// During this search if any error occurs it returns the error.
 pub fn activeFeature(o: struct {
-    allocator: Allocator,
+    alloc: Allocator,
 }) !?Feature {
     log.debug("activeFeature::", .{});
-    const head_ref = Git.getHeadRef(.{ .allocator = o.allocator }) catch |err| switch (err) {
+    const head_ref = Git.getHeadRef(.{ .allocator = o.alloc }) catch |err| switch (err) {
         error.BACKEND_UNABLE_TO_DETERMINE_CURRENT_BRANCH => return null,
         else => return err,
     };
-    defer head_ref.free(o.allocator);
+    defer head_ref.free(o.alloc);
 
     log.debug(
         "activeFeature:: head_ref:refname={s} head_ref:objectname:{s}",
@@ -72,15 +72,18 @@ pub fn activeFeature(o: struct {
 
     // now we can search for sparse refs
     const slice_array = try Slice.getAllSlicesWith(.{
-        .alloc = o.allocator,
+        .alloc = o.alloc,
     });
-    defer o.allocator.free(slice_array);
+    defer {
+        for (slice_array) |*s| s.free(o.alloc);
+        o.alloc.free(slice_array);
+    }
 
     for (slice_array) |slice| {
         // we are in sparse feature
         if (std.mem.eql(u8, slice.ref.name(), head_ref.refname)) {
             return try Feature.new(.{
-                .alloc = o.allocator,
+                .alloc = o.alloc,
                 .name = sliceNameToFeatureName(slice.ref.name()),
                 .ref = cStringToGitString(slice.ref.target().?.str()),
             });
@@ -100,7 +103,10 @@ pub fn findFeatureByName(o: struct {
         .alloc = o.alloc,
         .in_feature = o.feature_name,
     });
-    defer o.alloc.free(slice_array);
+    defer {
+        for (slice_array) |*s| s.free(o.alloc);
+        o.alloc.free(slice_array);
+    }
 
     // ref format: refs/heads/sparse/<username>/<feature_name>/slice/<slice_name>
     //

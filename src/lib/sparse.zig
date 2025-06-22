@@ -31,7 +31,7 @@ pub fn feature(
     // git show-ref --branches --head # butun branchleri ve suan ki HEAD i gormemizi
     // sagliyor
     var maybe_active_feature = try Feature.activeFeature(.{
-        .allocator = allocator,
+        .alloc = allocator,
     });
     defer {
         if (maybe_active_feature) |*f| {

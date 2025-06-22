@@ -139,14 +139,9 @@ pub const Slice = struct {
         defer slices.deinit(o.alloc);
 
         while (try ref_iter.next()) |ref| {
-            try refs.append(o.alloc, ref);
-        }
-        std.mem.sort(GitReference, refs.items, {}, GitReference.lessThanFn);
-        for (refs.items) |ref| {
             try slices.append(o.alloc, .{ .ref = ref });
         }
 
-        _ = try Slice.constructLinks(o.alloc, slices.items);
         return try slices.toOwnedSlice(o.alloc);
     }
 
@@ -165,3 +160,4 @@ const GitReferenceIterator = LibGit.GitReferenceIterator;
 const GitRepository = LibGit.GitRepository;
 const constants = @import("constants.zig");
 const SparseConfig = @import("config.zig").SparseConfig;
+const SparseError = @import("sparse.zig").Error;

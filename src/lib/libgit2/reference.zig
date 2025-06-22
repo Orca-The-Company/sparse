@@ -56,18 +56,6 @@ pub const GitReference = struct {
     _repo: GitRepository = undefined,
     _reflog: GitReflog = undefined,
 
-    /// This function is a comparison function which compares lhs' first reflog entry creation time
-    /// with rhs'. When used resulting slice of `GitReference` will have earlier ref as first item.
-    pub fn lessThanFn(context: void, lhs: GitReference, rhs: GitReference) bool {
-        _ = context;
-        const lhs_reflog_entry = lhs.reflog().entryByIndex(lhs.reflog().entrycount() - 1);
-        const lhs_committer = lhs_reflog_entry.?.committer();
-        const rhs_reflog_entry = rhs.reflog().entryByIndex(rhs.reflog().entrycount() - 1);
-        const rhs_committer = rhs_reflog_entry.?.committer();
-
-        return lhs_committer.value.?.when.time < rhs_committer.value.?.when.time;
-    }
-
     pub fn lookup(repo: GitRepository, name_to_look: GitString) !GitReference {
         var ref: GitReference = .{ ._repo = repo };
         const res: c_int = c.git_reference_lookup(&ref.value, repo.value, @ptrCast(name_to_look));

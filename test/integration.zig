@@ -9,6 +9,7 @@ pub const IntegrationTestError = error{
     UNEXPECTED_ERROR,
     SPARSE_FEATURE_EMPTY_REF,
     SPARSE_FEATURE_NOT_FOUND,
+    SPARSE_FEATURE_TARGET_MISMATCH,
 };
 pub const IntegrationTestResult = union(enum) {
     feature: SparseFeatureTestResult,
@@ -134,12 +135,13 @@ test "Create Sparse Feature with only feature name" {
         sparse_feature_test.createFeatureStep,
     );
     if (!rr_feature_step.feature.status()) {
-        log.err("Test Failed with exit_code {d} {any} - {s}", .{
+        log.err("Test Failed with exit_code {d} {any}", .{
             rr_feature_step.feature.exit_code,
             rr_feature_step.feature.error_context.?.err,
-            rr_feature_step.feature.error_context.?.err_msg.?,
+                //rr_feature_step.feature.error_context.?.err_msg.?,
         });
     }
+    try feature_integration.teardown(test_allocator, data);
     try std.testing.expect(rr_feature_step.feature.exit_code == 0);
 }
 

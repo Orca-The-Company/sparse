@@ -15,7 +15,7 @@ pub const TestData = struct {
 };
 pub const TestResult = struct {
     error_context: ?struct {
-        err: IntegrationTestError,
+        err: ?IntegrationTestError = null,
         err_msg: ?[]const u8 = "",
     } = null,
     // output: ?struct {
@@ -78,19 +78,18 @@ pub const SparseFeatureTest = struct {
     pub fn teardown(
         self: SparseFeatureTest,
         alloc: Allocator,
-        data: anytype,
+        data: TestData,
     ) !void {
         _ = self;
 
-        const test_data: TestData = @as(TestData, data);
         std.testing.log_level = .debug;
-        log.info("repo_dir {s}\n", .{test_data.repo_dir.?});
+        log.info("repo_dir {s}\n", .{data.repo_dir.?});
         const rr_temp_dir = try system.system(.{
             .allocator = alloc,
             .args = &.{
                 "rm",
                 "-r",
-                test_data.repo_dir.?,
+                data.repo_dir.?,
             },
         });
         log.info("stdout {s}\n", .{rr_temp_dir.stdout});
@@ -114,15 +113,21 @@ pub const SparseFeatureTest = struct {
 };
 pub fn createFeatureStep(alloc: Allocator, data: TestData) IntegrationTestResult {
     std.testing.log_level = .debug;
-    createCommitOnTarget(alloc, data) catch return .{
+    var test_result: IntegrationTestResult = .{
         .feature = .{
             .exit_code = 1,
             .error_context = .{
-                .err = IntegrationTestError.TERM_EXIT_FAILED,
+                .err = null,
+                .err_msg = null,
             },
         },
     };
-    const rr_temp_dir = system.system(.{
+    createCommitOnTarget(alloc, data) catch {
+        test_result.feature.error_context.?.err = IntegrationTestError.TERM_EXIT_FAILED;
+        return test_result;
+    };
+    // run sparse feature [feature_name] --to = null
+    const rr_sparse_feature = system.system(.{
         .allocator = alloc,
         .args = &.{
             build_options.sparse_exe_path,
@@ -130,67 +135,51 @@ pub fn createFeatureStep(alloc: Allocator, data: TestData) IntegrationTestResult
             data.feature_name.?,
         },
         .cwd = data.repo_dir.?,
-    }) catch return .{
-        .feature = .{
-            .exit_code = 1,
-            .error_context = .{ .err = IntegrationTestError.TERM_EXIT_FAILED },
-        },
+    }) catch {
+        test_result.feature.error_context.?.err = IntegrationTestError.TERM_EXIT_FAILED;
+        return test_result;
     };
-    defer alloc.free(rr_temp_dir.stdout);
-    defer alloc.free(rr_temp_dir.stderr);
-    // log.debug(
-    //     "sparse::feature::test:: createFeature stderr:{s}\n",
-    //     .{rr_temp_dir.stderr},
-    // );
+    defer alloc.free(rr_sparse_feature.stdout);
+    defer alloc.free(rr_sparse_feature.stderr);
     const rr_git_show_ref = system.git(
         .{
             .allocator = alloc,
             .args = &.{"show-ref"},
             .cwd = data.repo_dir.?,
         },
-    ) catch return .{
-        .feature = .{
-            .exit_code = 1,
-            .error_context = .{
-                .err = IntegrationTestError.TERM_EXIT_FAILED,
-                .err_msg = "git show-ref command failed.",
-            },
-        },
+    ) catch {
+        test_result.feature.error_context.?.err = IntegrationTestError.TERM_EXIT_FAILED;
+        test_result.feature.error_context.?.err_msg = "git show-ref command failed";
+        return test_result;
     };
-    const ref_target, const sparce_slice = parseGitShowRefResult(
-        alloc,
-        rr_git_show_ref.stdout,
-    ) catch |res| switch (res) {
-        IntegrationTestError.SPARSE_FEATURE_NOT_FOUND => return .{
-            .feature = .{
-                .exit_code = 1,
-                .error_context = .{
-                    .err = IntegrationTestError.SPARSE_FEATURE_NOT_FOUND,
-                },
-            },
-        },
-        IntegrationTestError.SPARSE_FEATURE_EMPTY_REF => return .{
-            .feature = .{
-                .exit_code = 1,
-                .error_context = .{
-                    .err = IntegrationTestError.SPARSE_FEATURE_EMPTY_REF,
-                },
-            },
-        },
-        else => return .{
-            .feature = .{
-                .exit_code = 1,
-                .error_context = .{
-                    .err = IntegrationTestError.UNEXPECTED_ERROR,
-                },
-            },
-        },
-    };
-    _ = ref_target;
-    _ = sparce_slice;
+    log.debug(
+        "sparse::feature::test:: git show ref stderr:{s}\n",
+        .{rr_git_show_ref.stdout},
+    );
     defer alloc.free(rr_git_show_ref.stdout);
     defer alloc.free(rr_git_show_ref.stderr);
-    return .{ .feature = .{ .exit_code = 0 } };
+
+    // Parsing git-show-ref
+    const sparce_slice = parseGitShowRefResult(
+        alloc,
+        rr_git_show_ref.stdout,
+        data.feature_name.?,
+        "bahanurenis@gmail.com",
+    ) catch |res| {
+        switch (res) {
+            IntegrationTestError.SPARSE_FEATURE_NOT_FOUND => test_result.feature.error_context.?.err = IntegrationTestError.SPARSE_FEATURE_NOT_FOUND,
+            IntegrationTestError.SPARSE_FEATURE_EMPTY_REF => test_result.feature.error_context.?.err = IntegrationTestError.SPARSE_FEATURE_EMPTY_REF,
+            else => test_result.feature.error_context.?.err = IntegrationTestError.UNEXPECTED_ERROR,
+        }
+
+        return test_result;
+    };
+
+    log.debug(":: My Sparse Slice {s}\n", .{sparce_slice});
+    if (test_result.feature.error_context.?.err == null) {
+        test_result.feature.exit_code = 0;
+    }
+    return test_result;
 }
 //test facility functions (TODO: move another module later maybe?)
 fn createCommitOnTarget(alloc: Allocator, data: TestData) !void {
@@ -225,24 +214,24 @@ fn createCommitOnTarget(alloc: Allocator, data: TestData) !void {
     defer alloc.free(rr_git_commit.stdout);
     defer alloc.free(rr_git_commit.stderr);
 }
-fn parseGitShowRefResult(alloc: Allocator, stdout: []u8) IntegrationTestError!struct { []const u8, []const u8 } {
+fn parseGitShowRefResult(
+    alloc: Allocator,
+    stdout: []u8,
+    feature_name: []const u8,
+    user_config: []const u8,
+) IntegrationTestError![]const u8 {
     // Attention!: this function will not be responsible to free stdout,
     // it should be done in caller side
-    _ = alloc;
 
-    // log.debug(
-    //     "SparseFeatureTest::createFeature stderr:{s}\n",
-    //     .{stdout},
-    // );
-
+    std.testing.log_level = .debug;
     const ref_result = std.mem.trim(u8, stdout, "\n\t \r");
 
-    // log.debug(
-    //     "::parseGitShowRefResult :{s}\n",
-    //     .{ref_result},
-    // );
-    var ref_target: ?[]const u8 = null;
-    var sparse_slice: ?[]const u8 = null;
+    const expected_sparse_slice = std.fmt.allocPrint(
+        alloc,
+        "refs/heads/sparse/{s}/{s}/slice/",
+        .{ user_config, feature_name },
+    ) catch return IntegrationTestError.SPARSE_FEATURE_NOT_FOUND;
+    defer alloc.free(expected_sparse_slice);
     if (ref_result.len != 0) {
         var split_ref_result = std.mem.tokenizeAny(
             u8,
@@ -250,44 +239,12 @@ fn parseGitShowRefResult(alloc: Allocator, stdout: []u8) IntegrationTestError!st
             " \n",
         );
         while (split_ref_result.next()) |iter| {
-            if (ref_target != null and sparse_slice != null) {
-                break;
-            }
-            if (std.mem.startsWith(u8, iter, "refs/heads/")) {
-                if (std.mem.containsAtLeast(u8, iter, 1, "sparse")) {
-                    sparse_slice = iter;
-                } else {
-                    ref_target = iter;
-                }
+            log.debug("ref iter {s}\n ", .{iter});
+            if (std.mem.startsWith(u8, iter, expected_sparse_slice)) {
+                return iter;
             }
         }
-        // else {
-        //     ref_target = null;
-        //     sparse_slice = null;
-        //     return IntegrationTestError.SPARSE_FEATURE_EMPTY_REF_ERROR;
-        // }
-
-        return .{ ref_target.?, sparse_slice.? };
     }
-    if (ref_target == null) {
-        return IntegrationTestError.SPARSE_FEATURE_EMPTY_REF;
-    }
-    if (sparse_slice == null) {
-        return IntegrationTestError.SPARSE_FEATURE_NOT_FOUND;
-    }
-    // split_ref_result.reset();
-    // while (split_ref_result.index < split_ref_result.buffer.len) : (split_ref_result.index += 1) {
-
-    //     _ = split_ref_result.next().?;
-    //     const ref_target = split_ref_result.next().?;
-    //     _ = split_ref_result.next().?;
-    //     const sparse_slice = split_ref_result.next().?;
-    //     log.debug(
-    //         "SparseFeatureTest::createFeature stderr: target:{s}\n slice: {s}\n",
-    //         .{ ref_target, sparse_slice },
-    //     );
-    // }
-    // }
     return IntegrationTestError.SPARSE_FEATURE_NOT_FOUND;
 }
 const sparse = @import("sparse");

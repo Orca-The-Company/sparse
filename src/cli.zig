@@ -4,7 +4,6 @@ const Command = @import("cli/command.zig").Command;
 const CommandError = @import("cli/command.zig").Error;
 
 fn parse(args: [][:0]u8) !Command {
-    //_ = alloc;
     const my_commands = @typeInfo(Command).@"union".fields;
 
     if (args.len < 2) {
@@ -29,7 +28,7 @@ pub fn run() !void {
 
     const command = try parse(args);
     const return_code = try command.run(allocator);
-    std.debug.print("return_code: {d}\n", .{return_code});
+    std.process.exit(return_code);
 }
 
 test "parse a non existent command" {

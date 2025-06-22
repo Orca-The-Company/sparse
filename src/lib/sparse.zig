@@ -6,6 +6,7 @@ pub const Error = error{
     BACKEND_UNABLE_TO_GET_REFS,
     UNABLE_TO_SWITCH_BRANCHES,
     CORRUPTED_FEATURE,
+    UNABLE_TO_DETECT_CURRENT_FEATURE,
     RECOVERABLE_ORPHAN_SLICES_IN_FEATURE,
     RECOVERABLE_FORKED_SLICES_IN_FEATURE,
 };
@@ -85,7 +86,6 @@ pub fn feature(
             var to = try Feature.new(.{
                 .alloc = allocator,
                 .name = feature_name,
-                .start_point = target,
             });
             defer to.free(allocator);
             return try jump(.{
@@ -94,6 +94,7 @@ pub fn feature(
                 .to = &to,
                 .create = true,
                 .slice = _slice,
+                .start_point = target,
             });
         }
     } else {
@@ -107,7 +108,6 @@ pub fn feature(
             var to = try Feature.new(.{
                 .alloc = allocator,
                 .name = feature_name,
-                .start_point = target,
             });
             defer to.free(allocator);
             return try jump(.{
@@ -115,15 +115,70 @@ pub fn feature(
                 .to = &to,
                 .create = true,
                 .slice = _slice,
+                .start_point = target,
             });
         }
     }
 }
 
-pub fn slice(opts: struct {}) !void {
-    _ = opts;
-    std.debug.print("\n===sparse-slice===\n\n", .{});
-    std.debug.print("\n====================\n", .{});
+pub fn slice(o: struct { slice_name: ?[]const u8 }) !void {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer std.debug.assert(gpa.deinit() == .ok);
+    const allocator = gpa.allocator();
+    try LibGit.init();
+    defer LibGit.shutdown() catch @panic("Oops: couldn't shutdown libgit2, something weird is cooking...");
+
+    var current_feature = try Feature.activeFeature(.{ .alloc = allocator });
+    defer {
+        if (current_feature) |*f| f.free(allocator);
+    }
+    if (current_feature) |*cf| {
+        if (cf.slices) |slices| {
+            if (slices.items.len == 0) {
+                log.warn("slice:: current_feature('{s}') doesnt have any slices, this is unexpected will try to create a slice anyways", .{current_feature.?.name});
+            }
+            const leaves = try Slice.leafNodes(.{ .alloc = allocator, .slice_pool = slices.items });
+            defer allocator.free(leaves);
+            if (leaves.len > 1) {
+                log.err("slice:: current_feature('{s}') has more than 1 orphan slices", .{current_feature.?.name});
+                return Error.RECOVERABLE_ORPHAN_SLICES_IN_FEATURE;
+            }
+            var start_point: ?[]const u8 = null;
+            if (leaves.len == 0) {
+                start_point = null;
+            } else {
+                // converting refname to branch name will be handled by jump command
+                start_point = leaves[0].ref.name()["refs/heads/".len..];
+            }
+
+            var create = true;
+            var slice_name: []const u8 = undefined;
+            if (o.slice_name) |s| {
+                slice_name = s;
+                for (slices.items) |_s| {
+                    if (std.mem.indexOf(u8, _s.ref.name(), slice_name) != null) {
+                        create = false;
+                        break;
+                    }
+                }
+            } else {
+                slice_name = constants.LAST_SLICE_NAME_POINTER;
+            }
+
+            try jump(.{
+                .allocator = allocator,
+                .to = cf,
+                .create = create,
+                .slice = slice_name,
+                .start_point = start_point,
+            });
+        } else {
+            log.warn("slice:: current_feature('{s}') doesnt have any slices, this is unexpected will try to create a slice anyways", .{current_feature.?.name});
+        }
+    } else {
+        log.err("slice:: couldn't find current feature, cannot execute slice commands outside of a feature, make sure you have commits in the repository", .{});
+        return Error.UNABLE_TO_DETECT_CURRENT_FEATURE;
+    }
 }
 
 pub fn submit(opts: struct {}) !void {
@@ -138,6 +193,7 @@ fn jump(o: struct {
     to: *Feature,
     create: bool = false,
     slice: []const u8 = constants.LAST_SLICE_NAME_POINTER,
+    start_point: ?[]const u8 = null,
 }) !void {
     log.debug(
         "jump:: from:{s} to.name:{s} to.ref_name:{s} slice:{s} to:start_point:{s} create:{any}",
@@ -146,7 +202,7 @@ fn jump(o: struct {
             o.to.name,
             o.to.ref_name,
             o.slice,
-            if (o.to.start_point) |s| s else "null",
+            if (o.start_point) |s| s else "null",
             o.create,
         },
     );
@@ -160,7 +216,8 @@ fn jump(o: struct {
     // TODO: handle gracefully saving things for current feature (`from`)
     // TODO: test if it is possible to use start_point as remote branch
 
-    if (o.to.start_point) |start_point| {
+    var result_start_point: ?[]const u8 = o.start_point;
+    if (o.start_point) |start_point| {
         // check if start_point of `to` is valid
         const branch = GitBranch.lookup(
             repo,
@@ -169,8 +226,7 @@ fn jump(o: struct {
         ) catch |err| res: {
             switch (err) {
                 LibGit.GitError.GIT_ENOTFOUND => {
-                    o.allocator.free(start_point);
-                    o.to.start_point = null;
+                    result_start_point = null;
                     break :res GitBranch{ .ref = .{} };
                 },
                 else => return err,
@@ -183,6 +239,7 @@ fn jump(o: struct {
         .allocator = o.allocator,
         .create = o.create,
         .slice_name = o.slice,
+        .start_point = result_start_point,
     });
 }
 
@@ -197,4 +254,4 @@ const GitBranch = LibGit.GitBranch;
 const GitBranchType = LibGit.GitBranchType;
 const Git = @import("system/Git.zig");
 const Feature = @import("Feature.zig");
-const Slice = @import("slice.zig");
+const Slice = @import("slice.zig").Slice;

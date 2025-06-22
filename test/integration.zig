@@ -7,6 +7,8 @@ const build_options = @import("build_options");
 pub const IntegrationTestError = error{
     TERM_EXIT_FAILED,
     UNEXPECTED_ERROR,
+    SPARSE_FEATURE_EMPTY_REF,
+    SPARSE_FEATURE_NOT_FOUND,
 };
 pub const IntegrationTestResult = union(enum) {
     feature: SparseFeatureTestResult,

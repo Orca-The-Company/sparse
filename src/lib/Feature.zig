@@ -6,21 +6,21 @@ const log = std.log.scoped(.Feature);
 const Feature = @This();
 
 name: GitString,
-ref: ?GitString = null,
+ref_name: GitString,
 start_point: ?GitString = null,
 slices: ?std.ArrayList(Slice) = null,
 
 pub fn new(o: struct {
     alloc: std.mem.Allocator,
     name: GitString,
-    ref: ?GitString = null,
+    ref_name: ?GitString = null,
     start_point: ?GitString = null,
     slices: ?[]Slice = null,
 }) !Feature {
     const dup = try o.alloc.dupe(u8, o.name);
     var f = Feature{
         .name = dup,
-        .ref = if (o.ref) |r| try o.alloc.dupe(u8, r) else null,
+        .ref_name = if (o.ref_name) |r| try o.alloc.dupe(u8, r) else try asFeatureRefName(o.alloc, dup),
         .start_point = if (o.start_point) |s| try o.alloc.dupe(u8, s) else null,
     };
     if (o.slices) |s| {
@@ -35,9 +35,7 @@ pub fn new(o: struct {
 }
 
 pub fn free(self: *Feature, allocator: Allocator) void {
-    if (self.ref) |r| {
-        allocator.free(r);
-    }
+    allocator.free(self.ref_name);
     if (self.start_point) |s| {
         allocator.free(s);
     }
@@ -83,10 +81,16 @@ pub fn activeFeature(o: struct {
     for (slice_array) |slice| {
         // we are in sparse feature
         if (std.mem.eql(u8, slice.ref.name(), head_ref.refname)) {
+            const our_slices = try Slice.getAllSlicesWith(.{
+                .alloc = o.alloc,
+                .in_feature = refNameToFeatureName(slice.ref.name()),
+            });
+            defer o.alloc.free(our_slices);
+
             return try Feature.new(.{
                 .alloc = o.alloc,
-                .name = sliceNameToFeatureName(slice.ref.name()),
-                .ref = cStringToGitString(slice.ref.target().?.str()),
+                .name = refNameToFeatureName(slice.ref.name()),
+                .slices = our_slices,
             });
         }
     }
@@ -145,8 +149,7 @@ pub fn findFeatureByName(o: struct {
 
     return try Feature.new(.{
         .alloc = o.alloc,
-        .name = sliceNameToFeatureName(leaves[0].ref.name()),
-        .ref = cStringToGitString(leaves[0].ref.target().?.str()),
+        .name = refNameToFeatureName(leaves[0].ref.name()),
         .slices = slice_array,
     });
 }
@@ -169,10 +172,6 @@ pub fn activate(self: *Feature, o: struct {
         },
     );
 
-    const sparse_name = try asFeatureName(o.allocator, self.name);
-    o.allocator.free(self.name);
-    self.name = sparse_name;
-
     var slice_name: []u8 = undefined;
     defer o.allocator.free(slice_name);
 
@@ -181,8 +180,8 @@ pub fn activate(self: *Feature, o: struct {
             if (o.create) {
                 slice_name = try std.fmt.allocPrint(
                     o.allocator,
-                    "{s}/{d}",
-                    .{ self.name, slice_array.items.len + 1 },
+                    "{s}/slice/{d}",
+                    .{ self.ref_name, slice_array.items.len + 1 },
                 );
             } else {
                 if (slice_array.items.len > 0) {
@@ -192,14 +191,14 @@ pub fn activate(self: *Feature, o: struct {
                         .{slice_array.getLast().ref.name()},
                     );
                 } else {
-                    slice_name = try std.fmt.allocPrint(o.allocator, "{s}/slice/1", .{self.name});
+                    slice_name = try std.fmt.allocPrint(o.allocator, "{s}/slice/1", .{self.ref_name});
                 }
             }
         } else {
-            slice_name = try std.fmt.allocPrint(o.allocator, "{s}/slice/1", .{self.name});
+            slice_name = try std.fmt.allocPrint(o.allocator, "{s}/slice/1", .{self.ref_name});
         }
     } else {
-        slice_name = try std.fmt.allocPrint(o.allocator, "{s}/slice/{s}", .{ self.name, o.slice_name });
+        slice_name = try std.fmt.allocPrint(o.allocator, "{s}/slice/{s}", .{ self.ref_name, o.slice_name });
     }
 
     log.debug("activate:: switching branch_name={s}", .{slice_name});
@@ -234,10 +233,11 @@ pub fn activate(self: *Feature, o: struct {
     log.debug("switch result: stdout:{s} stderr:{s}", .{ rr.stdout, rr.stderr });
 }
 
-fn asFeatureName(alloc: Allocator, name: []const u8) ![]const u8 {
-    if (std.mem.startsWith(u8, name, "refs/heads/sparse/")) {
+fn asFeatureRefName(alloc: Allocator, name: []const u8) ![]const u8 {
+    const result = sliceRefToFeatureRef(name);
+    if (std.mem.startsWith(u8, result, "refs/heads/sparse/")) {
         // already a sparse feature name it seems
-        return std.fmt.allocPrint(alloc, "{s}", .{name});
+        return std.fmt.allocPrint(alloc, "{s}", .{result});
     }
     const sparse_prefix = try utils.sparseBranchRefPrefix(.{
         .alloc = alloc,
@@ -249,10 +249,76 @@ fn asFeatureName(alloc: Allocator, name: []const u8) ![]const u8 {
     });
 }
 
-fn sliceNameToFeatureName(slice_name: []const u8) []const u8 {
-    log.debug("sliceNameToFeatureName:: slice_name:{s}", .{slice_name});
+fn sliceRefToFeatureRef(slice_name: []const u8) []const u8 {
+    log.debug("sliceRefToFeatureRef:: slice_name:{s}", .{slice_name});
     const until = std.mem.indexOf(u8, slice_name, "/slice/") orelse slice_name.len;
     return slice_name[0..until];
+}
+
+fn refNameToFeatureName(ref_name: []const u8) []const u8 {
+    const ref_prefix = "refs/heads/sparse/";
+    var prefix_upto = ref_prefix.len;
+    log.debug("refNameToFeatureName:: ref_name:{s}", .{ref_name});
+
+    const until = std.mem.indexOf(u8, ref_name, "/slice/") orelse ref_name.len;
+    const from = std.mem.lastIndexOf(u8, ref_name, ref_prefix) orelse 0;
+
+    if (ref_name.len < prefix_upto) {
+        prefix_upto = 0;
+    }
+
+    const may_contain_userid = ref_name[(from + prefix_upto)..until];
+    var slash_idx = std.mem.indexOf(u8, may_contain_userid, "/");
+    if (slash_idx == null) {
+        slash_idx = 0;
+    } else {
+        slash_idx.? += 1;
+    }
+
+    return may_contain_userid[slash_idx.?..];
+}
+
+test "asFeatureRefName" {
+    const expectEqualStrings = std.testing.expectEqualStrings;
+    const allocator = std.testing.allocator;
+    {
+        const res = try asFeatureRefName(allocator, "refs/heads/sparse/talhaHavadar/test/slice/1");
+        defer allocator.free(res);
+        try expectEqualStrings("refs/heads/sparse/talhaHavadar/test", res);
+    }
+    {
+        const res = try asFeatureRefName(allocator, "test");
+        defer allocator.free(res);
+        try expectEqualStrings("refs/heads/sparse/talhaHavadar/test", res);
+    }
+}
+
+test "refNameToFeatureName" {
+    const expectEqualStrings = std.testing.expectEqualStrings;
+    {
+        const res = refNameToFeatureName("refs/heads/sparse/talhaHavadar/test/slice/");
+        try expectEqualStrings("test", res);
+    }
+    {
+        const res = refNameToFeatureName("refs/heads/sparse/test/slice/");
+        try expectEqualStrings("test", res);
+    }
+    {
+        const res = refNameToFeatureName("refs/heads/sparse/test");
+        try expectEqualStrings("test", res);
+    }
+    {
+        const res = refNameToFeatureName("refs/heads/sparse/talhaHavadar/test");
+        try expectEqualStrings("test", res);
+    }
+    {
+        const res = refNameToFeatureName("test");
+        try expectEqualStrings("test", res);
+    }
+}
+
+test {
+    std.testing.refAllDecls(@This());
 }
 
 const constants = @import("constants.zig");

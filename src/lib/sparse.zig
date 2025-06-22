@@ -69,7 +69,7 @@ pub fn feature(
                 },
             );
 
-            if (std.mem.eql(u8, feature_to_go.name, active_feature.name)) {
+            if (std.mem.eql(u8, feature_to_go.ref_name, active_feature.ref_name)) {
                 // returning no need to do anything fancy
                 log.info("feature:: already in same feature({s})", .{active_feature.name});
                 return;
@@ -140,10 +140,11 @@ fn jump(o: struct {
     slice: []const u8 = constants.LAST_SLICE_NAME_POINTER,
 }) !void {
     log.debug(
-        "jump:: from:{s} to:{s} slice:{s} to:start_point:{s} create:{any}",
+        "jump:: from:{s} to.name:{s} to.ref_name:{s} slice:{s} to:start_point:{s} create:{any}",
         .{
             if (o.from) |f| f.name else "null",
             o.to.name,
+            o.to.ref_name,
             o.slice,
             if (o.to.start_point) |s| s else "null",
             o.create,
@@ -183,6 +184,10 @@ fn jump(o: struct {
         .create = o.create,
         .slice_name = o.slice,
     });
+}
+
+test {
+    std.testing.refAllDecls(@This());
 }
 
 const constants = @import("constants.zig");

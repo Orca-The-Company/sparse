@@ -15,7 +15,7 @@ pub const TestData = struct {
 pub const TestResult = struct {
     error_context: ?struct {
         err: IntegrationTestError,
-        err_msg: ?[]const u8 = null,
+        err_msg: ?[]const u8 = "",
     } = null,
     exit_code: u8 = 1,
 

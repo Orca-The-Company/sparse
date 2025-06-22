@@ -9,7 +9,7 @@ const Params = struct {
     /// <slice_name>: name of the new slice in feature.
     ///                 If the slice with the same name exists, then sparse switches to that slice.
     ///                 If <slice_name> is not provided, then sparse creates the slice based on the number of slices currently in the feature.
-    slice_name: ?[1][]u8,
+    slice_name: ?[1][]u8 = null,
     ///
     /// options:
     _options: struct {
@@ -56,9 +56,16 @@ pub const SliceCommand = struct {
         log.debug(
             "parsed slice command:: slice_name:{s}",
             .{
-                params.slice_name[0],
+                if (params.slice_name) |s| s[0] else "null",
             },
         );
+
+        Sparse.slice(.{
+            .slice_name = if (params.slice_name) |s| s[0] else null,
+        }) catch |err| {
+            log.err("error: {any}", .{err});
+            return 1;
+        };
 
         return 0;
     }

@@ -181,18 +181,24 @@ pub const GitReference = struct {
         );
         var iter = std.mem.splitBackwardsScalar(u8, first_entry.?.message(), ' ');
         const from = iter.first();
+
         // last entry can be HEAD so check for valid references
-        // GitReference.lookup(self._repo, from);
         if (std.mem.eql(u8, "HEAD", from)) {
             log.err("createdFrom:: detected HEAD as source, returning null", .{});
             return null;
         }
 
+        // TODO: find more efficient way to check if a branch exists
         const branch = GitBranch.lookup(self._repo, from, GitBranchType.git_branch_all) catch {
             log.err("createdFrom:: couldn't find the branch with ref:{s}", .{from});
             return null;
         };
-        return branch.ref;
+        defer branch.free();
+
+        return GitReference.lookup(self._repo, branch.ref.name()) catch {
+            log.err("createdFrom:: couldn't find GitReference with ref:{s}", .{from});
+            return null;
+        };
     }
 };
 

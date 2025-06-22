@@ -154,21 +154,13 @@ pub fn exampleSparseFunctions() !void {
     defer allocator.free(git_branch_result.stdout);
     std.debug.print("Return Signal: {any}", .{git_branch_result.term});
     std.debug.print("Output:\n{s}", .{git_branch_result.stdout});
-    var refs = try Git.getBranchRefs(.{ .allocator = allocator });
+    var refs = try Git.getBranchRefs(.{ .alloc = allocator });
     defer refs.free(allocator);
-    // try Sparse.feature(.{
-    //     .feature = .{ .name = .{"sparse-test"} },
-    //     ._options = .{
-    //         .@"--to" = "dev",
-    //     },
-    // });
-    try Sparse.slice(.{});
-    try Sparse.submit(.{});
 }
 
-// test {
-//     std.testing.refAllDecls(@This());
-// }
+test {
+    std.testing.refAllDecls(@This());
+}
 
 const Git = @import("lib/system/Git.zig");
 pub const Sparse = @import("lib/sparse.zig");

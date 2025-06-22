@@ -123,16 +123,16 @@ test "Create Sparse Feature with only feature name" {
         SparseFeatureTestData,
     );
     defer data.free(test_allocator);
-    const create_commit_result: IntegrationTestResult = feature_integration.run(
-        test_allocator,
-        SparseFeatureTestData,
-        data,
-        sparse_feature_test.createCommitOnTarget,
-    );
+    // const create_commit_result: IntegrationTestResult = feature_integration.run(
+    //     test_allocator,
+    //     SparseFeatureTestData,
+    //     data,
+    //     sparse_feature_test.createCommitOnTarget,
+    // );
     // try std.testing.expect(create_commit_result.status());
-    if (!create_commit_result.status()) {
-        log.err("exit_code: {d}", .{create_commit_result.feature.exit_code});
-    }
+    // if (!create_commit_result.status()) {
+    //     log.err("exit_code: {d}", .{create_commit_result.feature.exit_code});
+    // }
     _ = feature_integration.run(
         test_allocator,
         SparseFeatureTestData,

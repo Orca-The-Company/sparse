@@ -86,6 +86,22 @@ pub fn activeFeature(o: struct {
                 .in_feature = refNameToFeatureName(slice.ref.name()),
             });
             defer o.alloc.free(our_slices);
+            const orphan_count, const forked_count = try Slice.constructLinks(
+                o.alloc,
+                our_slices,
+            );
+            if (orphan_count > 1) {
+                log.warn(
+                    "activeFeature:: detected more than 1 orphan slices. (orphan_count:{d})",
+                    .{orphan_count},
+                );
+            }
+            if (forked_count > 0) {
+                log.warn(
+                    "activeFeature:: detected more than 0 forked slices. (forked_count:{d})",
+                    .{forked_count},
+                );
+            }
 
             return try Feature.new(.{
                 .alloc = o.alloc,

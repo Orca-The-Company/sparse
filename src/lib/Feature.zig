@@ -7,21 +7,18 @@ const Feature = @This();
 
 name: GitString,
 ref_name: GitString,
-start_point: ?GitString = null,
 slices: ?std.ArrayList(Slice) = null,
 
 pub fn new(o: struct {
     alloc: std.mem.Allocator,
     name: GitString,
     ref_name: ?GitString = null,
-    start_point: ?GitString = null,
     slices: ?[]Slice = null,
 }) !Feature {
     const dup = try o.alloc.dupe(u8, o.name);
     var f = Feature{
         .name = dup,
         .ref_name = if (o.ref_name) |r| try o.alloc.dupe(u8, r) else try asFeatureRefName(o.alloc, dup),
-        .start_point = if (o.start_point) |s| try o.alloc.dupe(u8, s) else null,
     };
     if (o.slices) |s| {
         if (f.slices) |*fs| {
@@ -36,9 +33,6 @@ pub fn new(o: struct {
 
 pub fn free(self: *Feature, allocator: Allocator) void {
     allocator.free(self.ref_name);
-    if (self.start_point) |s| {
-        allocator.free(s);
-    }
     if (self.slices) |s| {
         for (s.items) |*i| i.free(allocator);
         s.deinit();
@@ -179,6 +173,7 @@ pub fn activate(self: *Feature, o: struct {
     allocator: std.mem.Allocator,
     create: bool = false,
     slice_name: []const u8,
+    start_point: ?[]const u8,
 }) !void {
     log.debug(
         "activate:: o:create={any} o:slice_name={s}",
@@ -222,7 +217,7 @@ pub fn activate(self: *Feature, o: struct {
     var switch_args: []const []const u8 = undefined;
 
     if (o.create) {
-        if (self.start_point) |start_point| {
+        if (o.start_point) |start_point| {
             switch_args = &.{
                 "-c",
                 slice_name["refs/heads/".len..],

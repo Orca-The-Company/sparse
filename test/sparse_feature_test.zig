@@ -157,11 +157,37 @@ pub fn createFeatureStep(alloc: Allocator, data: TestData) IntegrationTestResult
             },
         },
     };
-    try parseGitShowRefResult(alloc, rr_git_show_ref.stdout);
-    // log.debug(
-    //     "SparseFeatureTest::createFeature stderr:{s}\n",
-    //     .{rr_git_show_ref.stdout},
-    // );
+    const ref_target, const sparce_slice = parseGitShowRefResult(
+        alloc,
+        rr_git_show_ref.stdout,
+    ) catch |res| switch (res) {
+        IntegrationTestError.SPARSE_FEATURE_NOT_FOUND => return .{
+            .feature = .{
+                .exit_code = 1,
+                .error_context = .{
+                    .err = IntegrationTestError.SPARSE_FEATURE_NOT_FOUND,
+                },
+            },
+        },
+        IntegrationTestError.SPARSE_FEATURE_EMPTY_REF => return .{
+            .feature = .{
+                .exit_code = 1,
+                .error_context = .{
+                    .err = IntegrationTestError.SPARSE_FEATURE_EMPTY_REF,
+                },
+            },
+        },
+        else => return .{
+            .feature = .{
+                .exit_code = 1,
+                .error_context = .{
+                    .err = IntegrationTestError.UNEXPECTED_ERROR,
+                },
+            },
+        },
+    };
+    _ = ref_target;
+    _ = sparce_slice;
     defer alloc.free(rr_git_show_ref.stdout);
     defer alloc.free(rr_git_show_ref.stderr);
     return .{ .feature = .{ .exit_code = 0 } };
@@ -199,13 +225,70 @@ fn createCommitOnTarget(alloc: Allocator, data: TestData) !void {
     defer alloc.free(rr_git_commit.stdout);
     defer alloc.free(rr_git_commit.stderr);
 }
-fn parseGitShowRefResult(alloc: Allocator, stdout: []u8) !void {
+fn parseGitShowRefResult(alloc: Allocator, stdout: []u8) IntegrationTestError!struct { []const u8, []const u8 } {
+    // Attention!: this function will not be responsible to free stdout,
+    // it should be done in caller side
     _ = alloc;
 
-    log.debug(
-        "SparseFeatureTest::createFeature stderr:{s}\n",
-        .{stdout},
-    );
+    // log.debug(
+    //     "SparseFeatureTest::createFeature stderr:{s}\n",
+    //     .{stdout},
+    // );
+
+    const ref_result = std.mem.trim(u8, stdout, "\n\t \r");
+
+    // log.debug(
+    //     "::parseGitShowRefResult :{s}\n",
+    //     .{ref_result},
+    // );
+    var ref_target: ?[]const u8 = null;
+    var sparse_slice: ?[]const u8 = null;
+    if (ref_result.len != 0) {
+        var split_ref_result = std.mem.tokenizeAny(
+            u8,
+            stdout,
+            " \n",
+        );
+        while (split_ref_result.next()) |iter| {
+            if (ref_target != null and sparse_slice != null) {
+                break;
+            }
+            if (std.mem.startsWith(u8, iter, "refs/heads/")) {
+                if (std.mem.containsAtLeast(u8, iter, 1, "sparse")) {
+                    sparse_slice = iter;
+                } else {
+                    ref_target = iter;
+                }
+            }
+        }
+        // else {
+        //     ref_target = null;
+        //     sparse_slice = null;
+        //     return IntegrationTestError.SPARSE_FEATURE_EMPTY_REF_ERROR;
+        // }
+
+        return .{ ref_target.?, sparse_slice.? };
+    }
+    if (ref_target == null) {
+        return IntegrationTestError.SPARSE_FEATURE_EMPTY_REF;
+    }
+    if (sparse_slice == null) {
+        return IntegrationTestError.SPARSE_FEATURE_NOT_FOUND;
+    }
+    // split_ref_result.reset();
+    // while (split_ref_result.index < split_ref_result.buffer.len) : (split_ref_result.index += 1) {
+
+    //     _ = split_ref_result.next().?;
+    //     const ref_target = split_ref_result.next().?;
+    //     _ = split_ref_result.next().?;
+    //     const sparse_slice = split_ref_result.next().?;
+    //     log.debug(
+    //         "SparseFeatureTest::createFeature stderr: target:{s}\n slice: {s}\n",
+    //         .{ ref_target, sparse_slice },
+    //     );
+    // }
+    // }
+    return IntegrationTestError.SPARSE_FEATURE_NOT_FOUND;
 }
 const sparse = @import("sparse");
 const system = @import("system.zig");

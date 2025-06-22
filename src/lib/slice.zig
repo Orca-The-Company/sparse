@@ -164,6 +164,7 @@ pub const Slice = struct {
             });
         }
 
+        _ = try Slice.constructLinks(o.alloc, slices.items);
         return try slices.toOwnedSlice(o.alloc);
     }
 

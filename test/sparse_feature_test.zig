@@ -18,7 +18,14 @@ pub const TestResult = struct {
         err: IntegrationTestError,
         err_msg: ?[]const u8 = "",
     } = null,
-    output: ?[]const []const u8 = null,
+    // output: ?struct {
+    //     feature_name: ?[]const u8 = null,
+    //     feature_prefix: []const u8 = "refs/heads/sparse/",
+    //     target: ?[]const u8 = null,
+    //     user_config: ?[]const u8 = null,
+    //     slice_prefix: []const u8 = "/slice/",
+    //     slice_name: ?[]const u8 = null,
+    // } = null,
     exit_code: u8 = 1,
 
     pub fn status(self: TestResult) bool {
@@ -150,11 +157,11 @@ pub fn createFeatureStep(alloc: Allocator, data: TestData) IntegrationTestResult
             },
         },
     };
-
-    log.debug(
-        "SparseFeatureTest::createFeature stderr:{s}\n",
-        .{rr_git_show_ref.stdout},
-    );
+    try parseGitShowRefResult(alloc, rr_git_show_ref.stdout);
+    // log.debug(
+    //     "SparseFeatureTest::createFeature stderr:{s}\n",
+    //     .{rr_git_show_ref.stdout},
+    // );
     defer alloc.free(rr_git_show_ref.stdout);
     defer alloc.free(rr_git_show_ref.stderr);
     return .{ .feature = .{ .exit_code = 0 } };
@@ -191,6 +198,14 @@ fn createCommitOnTarget(alloc: Allocator, data: TestData) !void {
     });
     defer alloc.free(rr_git_commit.stdout);
     defer alloc.free(rr_git_commit.stderr);
+}
+fn parseGitShowRefResult(alloc: Allocator, stdout: []u8) !void {
+    _ = alloc;
+
+    log.debug(
+        "SparseFeatureTest::createFeature stderr:{s}\n",
+        .{stdout},
+    );
 }
 const sparse = @import("sparse");
 const system = @import("system.zig");

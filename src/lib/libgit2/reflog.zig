@@ -13,6 +13,9 @@ pub const GitReflogEntry = struct {
 
         return signature;
     }
+    pub fn message(self: GitReflogEntry) GitString {
+        return cStringToGitString(c.git_reflog_entry_message(self.value));
+    }
 };
 
 pub const GitReflog = struct {
@@ -53,4 +56,5 @@ pub const GitReflog = struct {
 const GitError = @import("error.zig").GitError;
 const GitRepository = @import("repository.zig").GitRepository;
 const GitString = @import("types.zig").GitString;
+const cStringToGitString = @import("types.zig").cStringToGitString;
 const GitSignature = @import("signature.zig").GitSignature;

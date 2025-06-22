@@ -125,7 +125,10 @@ pub const Slice = struct {
     }) ![]Slice {
         log.debug("getAllSlicesWith::", .{});
         const repo = try GitRepository.open();
-        defer repo.free();
+        // No need to free repo here since we are returning slices with refs
+        // TODO: we have a nasty memory leak here that we need to refactor
+        // how we handle repo for references
+        // defer repo.free();
 
         const sparse_ref_prefix = try utils.sparseBranchRefPrefix(.{
             .alloc = o.alloc,

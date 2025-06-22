@@ -6,6 +6,7 @@ const RunResult = std.process.Child.RunResult;
 pub const TestData = struct {
     repo_dir: ?[]const u8 = null,
     feature_name: ?[]const u8 = null,
+    feature_to: ?[]const u8 = null,
     pub fn free(self: TestData, alloc: Allocator) void {
         if (self.repo_dir) |repo_dir| {
             alloc.free(repo_dir);
@@ -17,6 +18,7 @@ pub const TestResult = struct {
         err: IntegrationTestError,
         err_msg: ?[]const u8 = "",
     } = null,
+    output: ?[]const []const u8 = null,
     exit_code: u8 = 1,
 
     pub fn status(self: TestResult) bool {
@@ -32,10 +34,6 @@ pub const SparseFeatureTest = struct {
     ) !T {
         _ = self;
         var data: TestData = .{};
-        //_ = alloc;
-        //_ = repo_dir;
-        //
-
         std.testing.log_level = .debug;
         const rr_temp_dir = try system.system(.{
             .allocator = alloc,
@@ -133,12 +131,35 @@ pub fn createFeatureStep(alloc: Allocator, data: TestData) IntegrationTestResult
     };
     defer alloc.free(rr_temp_dir.stdout);
     defer alloc.free(rr_temp_dir.stderr);
+    // log.debug(
+    //     "sparse::feature::test:: createFeature stderr:{s}\n",
+    //     .{rr_temp_dir.stderr},
+    // );
+    const rr_git_show_ref = system.git(
+        .{
+            .allocator = alloc,
+            .args = &.{"show-ref"},
+            .cwd = data.repo_dir.?,
+        },
+    ) catch return .{
+        .feature = .{
+            .exit_code = 1,
+            .error_context = .{
+                .err = IntegrationTestError.TERM_EXIT_FAILED,
+                .err_msg = "git show-ref command failed.",
+            },
+        },
+    };
+
     log.debug(
-        "sparse::feature::test:: createFeature stdout: {s}\n stderr:{s}\n",
-        .{ rr_temp_dir.stdout, rr_temp_dir.stderr },
+        "SparseFeatureTest::createFeature stderr:{s}\n",
+        .{rr_git_show_ref.stdout},
     );
+    defer alloc.free(rr_git_show_ref.stdout);
+    defer alloc.free(rr_git_show_ref.stderr);
     return .{ .feature = .{ .exit_code = 0 } };
 }
+//test facility functions (TODO: move another module later maybe?)
 fn createCommitOnTarget(alloc: Allocator, data: TestData) !void {
     std.testing.log_level = .debug;
     const rr_new_file = try system.system(.{

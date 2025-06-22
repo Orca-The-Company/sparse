@@ -84,7 +84,7 @@ pub const GitBranch = struct {
     /// branch part of it.
     ///
     pub fn name(self: GitBranch) !GitString {
-        return try self._name(self.ref);
+        return try GitBranch._name(self.ref);
     }
 
     fn _name(ref: GitReference) !GitString {

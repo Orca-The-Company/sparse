@@ -4,6 +4,7 @@ const ArrayListUnmanaged = std.ArrayListUnmanaged;
 const Allocator = std.mem.Allocator;
 
 pub const Slice = struct {
+    repo: GitRepository,
     ref: GitReference,
     target: ?*Slice = null,
     children: ArrayListUnmanaged(*Slice) = ArrayListUnmanaged(*Slice).empty,
@@ -27,7 +28,7 @@ pub const Slice = struct {
 
         // TODO: investigate better ways to construct links between given slices
         for (slices) |*s| {
-            const created_from = s.ref.createdFrom();
+            const created_from = s.ref.createdFrom(s.repo);
             if (created_from) |c| {
                 defer c.free();
                 s.target = null;
@@ -98,7 +99,9 @@ pub const Slice = struct {
                 if (leaf_slice.?.target != null) {
                     try writer.writeAll(" ==> ");
                 } else {
-                    const created_from = leaf_slice.?.ref.createdFrom();
+                    const created_from = leaf_slice.?.ref.createdFrom(
+                        leaf_slice.?.repo,
+                    );
                     if (created_from) |c| {
                         defer c.free();
                         try writer.writeAll(" ==> ");
@@ -122,10 +125,7 @@ pub const Slice = struct {
     }) ![]Slice {
         log.debug("getAllSlicesWith::", .{});
         const repo = try GitRepository.open();
-        // No need to free repo here since we are returning slices with refs
-        // TODO: we have a nasty memory leak here that we need to refactor
-        // how we handle repo for references
-        // defer repo.free();
+        defer repo.free();
 
         const sparse_ref_prefix = try utils.sparseBranchRefPrefix(.{
             .alloc = o.alloc,
@@ -157,7 +157,11 @@ pub const Slice = struct {
         var slices = std.ArrayListUnmanaged(Slice).empty;
 
         while (try ref_iter.next()) |ref| {
-            try slices.append(o.alloc, .{ .ref = ref });
+            const slice_repo = try GitRepository.open();
+            try slices.append(o.alloc, .{
+                .ref = ref,
+                .repo = slice_repo,
+            });
         }
 
         return try slices.toOwnedSlice(o.alloc);
@@ -165,6 +169,7 @@ pub const Slice = struct {
 
     pub fn free(self: *Slice, alloc: Allocator) void {
         self.ref.free();
+        self.repo.free();
         self.children.deinit(alloc);
     }
 };

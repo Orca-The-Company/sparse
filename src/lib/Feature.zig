@@ -42,6 +42,7 @@ pub fn free(self: *Feature, allocator: Allocator) void {
         allocator.free(s);
     }
     if (self.slices) |s| {
+        for (s.items) |*i| i.free(allocator);
         s.deinit();
     }
     allocator.free(self.name);
@@ -103,10 +104,8 @@ pub fn findFeatureByName(o: struct {
         .alloc = o.alloc,
         .in_feature = o.feature_name,
     });
-    defer {
-        for (slice_array) |*s| s.free(o.alloc);
-        o.alloc.free(slice_array);
-    }
+    // Do not free each slice since they will be freed when feature is freed
+    defer o.alloc.free(slice_array);
 
     // ref format: refs/heads/sparse/<username>/<feature_name>/slice/<slice_name>
     //
@@ -118,10 +117,36 @@ pub fn findFeatureByName(o: struct {
         //return try recoverFeatureWithName();
     }
 
+    const orphan_count, const forked_count = try Slice.constructLinks(
+        o.alloc,
+        slice_array,
+    );
+    if (orphan_count > 1) {
+        log.warn(
+            "findFeatureByName:: detected more than 1 orphan slices. (orphan_count:{d})",
+            .{orphan_count},
+        );
+    }
+    if (forked_count > 0) {
+        log.warn(
+            "findFeatureByName:: detected more than 0 forked slices. (forked_count:{d})",
+            .{forked_count},
+        );
+    }
+    const leaves = try Slice.leafNodes(.{ .alloc = o.alloc, .slice_pool = slice_array });
+    defer o.alloc.free(leaves);
+    if (leaves.len == 0) {
+        log.err(
+            "findFeatureByName:: couldn't find leaf slice for feature ('{s}')",
+            .{o.feature_name},
+        );
+        return SparseError.CORRUPTED_FEATURE;
+    }
+
     return try Feature.new(.{
         .alloc = o.alloc,
-        .name = sliceNameToFeatureName(slice_array[0].ref.name()),
-        .ref = cStringToGitString(slice_array[0].ref.target().?.str()),
+        .name = sliceNameToFeatureName(leaves[0].ref.name()),
+        .ref = cStringToGitString(leaves[0].ref.target().?.str()),
         .slices = slice_array,
     });
 }
@@ -233,6 +258,8 @@ fn sliceNameToFeatureName(slice_name: []const u8) []const u8 {
 const constants = @import("constants.zig");
 const Git = @import("system/Git.zig");
 const GitString = @import("libgit2/types.zig").GitString;
+const GitBranch = @import("libgit2/branch.zig").GitBranch;
+const GitBranchType = @import("libgit2/branch.zig").GitBranchType;
 const cStringToGitString = @import("libgit2/types.zig").cStringToGitString;
 const utils = @import("utils.zig");
 const Slice = @import("slice.zig").Slice;

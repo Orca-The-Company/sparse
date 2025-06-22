@@ -125,20 +125,20 @@ test "Create Sparse Feature with only feature name" {
     defer data.free(test_allocator);
     // set a feature name
     data.feature_name = "hellofeature";
-    const rr_sparse_feature = feature_integration.run(
+    const rr_feature_step = feature_integration.run(
         test_allocator,
         SparseFeatureTestData,
         data,
         sparse_feature_test.createFeatureStep,
     );
-    if (!rr_sparse_feature.feature.status()) {
+    if (!rr_feature_step.feature.status()) {
         log.err("Test Failed with exit_code {d} {any} - {s}", .{
-            rr_sparse_feature.feature.exit_code,
-            rr_sparse_feature.feature.error_context.?.err,
-            rr_sparse_feature.feature.error_context.?.err_msg.?,
+            rr_feature_step.feature.exit_code,
+            rr_feature_step.feature.error_context.?.err,
+            rr_feature_step.feature.error_context.?.err_msg.?,
         });
     }
-    try std.testing.expect(rr_sparse_feature.feature.exit_code == 0);
+    try std.testing.expect(rr_feature_step.feature.exit_code == 0);
 }
 
 test "Hello Integration2" {

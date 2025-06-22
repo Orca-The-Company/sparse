@@ -35,9 +35,7 @@ pub const GitReferenceIterator = struct {
     }
 
     pub fn next(self: *GitReferenceIterator) !?GitReference {
-        var ref: GitReference = .{
-            ._repo = self._repo,
-        };
+        var ref: GitReference = .{};
 
         const res: c_int = c.git_reference_next(&ref.value, self.value);
         if (res == c.GIT_ITEROVER) {
@@ -53,11 +51,10 @@ pub const GitReferenceIterator = struct {
 
 pub const GitReference = struct {
     value: ?*c.git_reference = null,
-    _repo: GitRepository = undefined,
     _reflog: GitReflog = undefined,
 
     pub fn lookup(repo: GitRepository, name_to_look: GitString) !GitReference {
-        var ref: GitReference = .{ ._repo = repo };
+        var ref: GitReference = .{};
         const res: c_int = c.git_reference_lookup(&ref.value, repo.value, @ptrCast(name_to_look));
         if (res == 0) {
             ref._reflog = try GitReflog.read(repo, name_to_look);
@@ -168,7 +165,7 @@ pub const GitReference = struct {
         return cStringToGitString(c.git_reference_name(self.value));
     }
 
-    pub fn createdFrom(self: GitReference) ?GitReference {
+    pub fn createdFrom(self: GitReference, repo: GitRepository) ?GitReference {
         log.debug("createdFrom::", .{});
         const rlog = self.reflog();
         const first_entry = rlog.entryByIndex(rlog.entrycount() - 1);
@@ -189,13 +186,13 @@ pub const GitReference = struct {
         }
 
         // TODO: find more efficient way to check if a branch exists
-        const branch = GitBranch.lookup(self._repo, from, GitBranchType.git_branch_all) catch {
+        const branch = GitBranch.lookup(repo, from, GitBranchType.git_branch_all) catch {
             log.err("createdFrom:: couldn't find the branch with ref:{s}", .{from});
             return null;
         };
         defer branch.free();
 
-        return GitReference.lookup(self._repo, branch.ref.name()) catch {
+        return GitReference.lookup(repo, branch.ref.name()) catch {
             log.err("createdFrom:: couldn't find GitReference with ref:{s}", .{from});
             return null;
         };

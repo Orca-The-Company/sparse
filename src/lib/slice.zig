@@ -59,22 +59,39 @@ pub const Slice = struct {
         };
     }
 
+    /// Given pool of slices in `slice_pool` finds the leaf nodes and returns
+    /// the pointer of them as array. Returns slices as owned so it is up to
+    /// caller to free the memory.
+    pub fn leafNodes(o: struct {
+        alloc: Allocator,
+        slice_pool: []Slice,
+    }) ![]*Slice {
+        var leaves = ArrayListUnmanaged(*Slice).empty;
+        defer leaves.deinit(o.alloc);
+
+        for (o.slice_pool) |*s| {
+            if (s.children.items.len == 0) {
+                try leaves.append(o.alloc, s);
+            }
+        }
+        return try leaves.toOwnedSlice(o.alloc);
+    }
+
     pub fn printSliceGraph(writer: anytype, slice_pool: []Slice) !void {
         var gpa = std.heap.GeneralPurposeAllocator(.{}){};
         defer std.debug.assert(gpa.deinit() == .ok);
         const allocator = gpa.allocator();
 
         // find leaf nodes
-        var leaves = std.ArrayList(Slice).init(allocator);
-        defer leaves.deinit();
+        const leaves = try Slice.leafNodes(
+            .{
+                .alloc = allocator,
+                .slice_pool = slice_pool,
+            },
+        );
+        defer allocator.free(leaves);
 
-        for (slice_pool) |s| {
-            if (s.children.items.len == 0) {
-                try leaves.append(s);
-            }
-        }
-
-        for (leaves.items) |*l| {
+        for (leaves) |l| {
             var leaf_slice: ?*Slice = l;
             while (leaf_slice != null) : (leaf_slice = leaf_slice.?.target) {
                 try writer.writeAll(leaf_slice.?.ref.name());
@@ -105,7 +122,11 @@ pub const Slice = struct {
     }) ![]Slice {
         log.debug("getAllSlicesWith::", .{});
         const repo = try GitRepository.open();
-        defer repo.free();
+        // No need to free repo here since we are returning slices with refs
+        // TODO: we have a nasty memory leak here that we need to refactor
+        // how we handle repo for references
+        // defer repo.free();
+
         const sparse_ref_prefix = try utils.sparseBranchRefPrefix(.{
             .alloc = o.alloc,
             .repo = repo,
@@ -133,10 +154,7 @@ pub const Slice = struct {
 
         var ref_iter = try GitReferenceIterator.fromGlob(glob, repo);
         defer ref_iter.free();
-        var refs = std.ArrayListUnmanaged(GitReference).empty;
-        defer refs.deinit(o.alloc);
         var slices = std.ArrayListUnmanaged(Slice).empty;
-        defer slices.deinit(o.alloc);
 
         while (try ref_iter.next()) |ref| {
             try slices.append(o.alloc, .{ .ref = ref });

@@ -339,6 +339,28 @@ test "sliceRefToFeatureRef" {
     }
 }
 
+test "fuzz sliceRefToFeatureRef" {
+    const expect = std.testing.expect;
+
+    const Fuzz = struct {
+        pub fn fuzzWrapper(context: @This(), input: []const u8) !void {
+            _ = context;
+            // The function should never crash or panic
+            const result = sliceRefToFeatureRef(input);
+            // Optionally, add some invariants:
+            // - result should always be a slice of input or empty
+            // - result.len <= input.len
+            try expect(result.len <= input.len);
+            // - result should not contain "/slice/" if input did
+            if (std.mem.indexOf(u8, input, "/slice/")) |_| {
+                try expect(std.mem.indexOf(u8, result, "/slice/") == null);
+            }
+        }
+    };
+
+    try std.testing.fuzz(Fuzz{}, Fuzz.fuzzWrapper, .{});
+}
+
 test "refNameToFeatureName" {
     const expectEqualStrings = std.testing.expectEqualStrings;
     {

@@ -304,6 +304,41 @@ test "asFeatureRefName" {
     }
 }
 
+test "sliceRefToFeatureRef" {
+    const expectEqualStrings = std.testing.expectEqualStrings;
+
+    // Standard case with userid and feature name
+    {
+        const res = sliceRefToFeatureRef("refs/heads/sparse/user1/featureA/slice/3");
+        try expectEqualStrings("refs/heads/sparse/user1/featureA", res);
+    }
+    // Case with no /slice/ (should return the whole string)
+    {
+        const res = sliceRefToFeatureRef("refs/heads/sparse/user1/featureA");
+        try expectEqualStrings("refs/heads/sparse/user1/featureA", res);
+    }
+    // Case with only feature name, no userid
+    {
+        const res = sliceRefToFeatureRef("refs/heads/sparse/featureB/slice/1");
+        try expectEqualStrings("refs/heads/sparse/featureB", res);
+    }
+    // Case with only feature name, no /slice/
+    {
+        const res = sliceRefToFeatureRef("refs/heads/sparse/featureB");
+        try expectEqualStrings("refs/heads/sparse/featureB", res);
+    }
+    // Case with just a feature name (not a full ref)
+    {
+        const res = sliceRefToFeatureRef("featureC/slice/2");
+        try expectEqualStrings("featureC", res);
+    }
+    // Case with just a feature name, no /slice/
+    {
+        const res = sliceRefToFeatureRef("featureC");
+        try expectEqualStrings("featureC", res);
+    }
+}
+
 test "refNameToFeatureName" {
     const expectEqualStrings = std.testing.expectEqualStrings;
     {

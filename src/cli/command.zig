@@ -27,6 +27,7 @@ pub const ArgType = enum {
 pub const Command = union(enum) {
     feature: FeatureCommand,
     slice: SliceCommand,
+    update: UpdateCommand,
 
     pub fn run(self: Command, alloc: Allocator) !u8 {
         switch (self) {
@@ -202,3 +203,4 @@ pub fn parsePositionals(
 
 const FeatureCommand = @import("feature_command.zig").FeatureCommand;
 const SliceCommand = @import("slice_command.zig").SliceCommand;
+const UpdateCommand = @import("update_command.zig").UpdateCommand;

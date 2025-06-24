@@ -1,0 +1,113 @@
+#!/usr/bin/env bash
+# Bash completion script for the 'sparse' tool.
+#
+# INSTRUCTIONS:
+# 1. Save this file as `sparse-completion.sh` in a convenient location,
+#    for example, in your home directory: `~/.sparse-completion.sh`.
+# 2. Source this file from your shell's configuration file (e.g., ~/.bashrc or ~/.bash_profile).
+#    Add the following line to your config file:
+#
+#    source ~/.sparse-completion.sh
+#
+# 3. Restart your shell or run `source ~/.bashrc` to activate the completion.
+# 4. Type `sparse ` and press the Tab key to see the available subcommands.
+#    Type `sparse feature ` and press Tab to see a clean list of existing feature names.
+#    Type `sparse slice ` and press Tab to see a clean list of slice names for the current feature.
+
+_sparse_completions() {
+    # COMP_WORDS: An array containing the individual words in the current command line.
+    # COMP_CWORD: The index of the word containing the current cursor position in the COMP_WORDS array.
+    # cur: The current word being completed.
+    # prev: The word immediately preceding the current word.
+    local cur prev
+    cur="${COMP_WORDS[COMP_CWORD]}"
+    prev="${COMP_WORDS[COMP_CWORD-1]}"
+
+    # Fetch a list of all local Git branches.
+    # We redirect stderr to /dev/null to hide errors if not in a git repo.
+    local all_branches
+    all_branches=$(git branch --format='%(refname:short)' 2>/dev/null)
+
+    # --- Feature Name Parsing ---
+    # A sparse feature branch is named 'sparse/<user>/<feature_name>/slice/<slice_name>'.
+    # This command extracts just the <feature_name> part for the completion list.
+    local feature_names
+    feature_names=$(echo "${all_branches}" | grep '^sparse/.*/.*/slice/' | cut -d'/' -f3 | sort -u)
+
+    # Define the list of main subcommands for the 'sparse' tool.
+    local subcommands="feature slice rebase merge list clean status show"
+
+    # --- Main Completion Logic ---
+
+    # If the user is completing the first word after 'sparse', it must be a subcommand.
+    if [[ ${COMP_CWORD} -eq 1 ]]; then
+        COMPREPLY=($(compgen -W "${subcommands}" -- "${cur}"))
+        return 0
+    fi
+
+    # Get the subcommand, which is the second word on the command line (index 1).
+    local subcommand="${COMP_WORDS[1]}"
+
+    # Use a case statement to handle completion logic for each subcommand.
+    case "${subcommand}" in
+        feature)
+            # --- Completion logic for `sparse feature` ---
+            local opts="--help --to"
+
+            if [[ "${prev}" == "--to" ]]; then
+                COMPREPLY=($(compgen -W "${all_branches}" -- "${cur}"))
+                return 0
+            fi
+
+            if [[ "${cur}" == -* ]]; then
+                COMPREPLY=($(compgen -W "${opts}" -- "${cur}"))
+                return 0
+            fi
+
+            if [[ ${COMP_CWORD} -eq 2 ]]; then
+                 COMPREPLY=($(compgen -W "${feature_names}" -- "${cur}"))
+                 return 0
+            fi
+            ;;
+
+        slice)
+            # --- Completion logic for `sparse slice` ---
+            local slice_opts="--help --before --after"
+
+            # Suggest options if the current word starts with a dash.
+            if [[ "${cur}" == -* ]]; then
+                COMPREPLY=($(compgen -W "${slice_opts}" -- "${cur}"))
+                return 0
+            fi
+
+            # --- Slice Name Parsing ---
+            # To suggest slice names, we must first determine the current feature.
+            local current_branch
+            current_branch=$(git branch --show-current 2>/dev/null)
+
+            # Check if we are on a sparse branch.
+            if [[ "$current_branch" == sparse/* ]]; then
+                # Extract user and feature name from the current branch path.
+                local current_user current_feature
+                current_user=$(echo "$current_branch" | cut -d'/' -f2)
+                current_feature=$(echo "$current_branch" | cut -d'/' -f3)
+
+                # Find all slices for the current feature and extract just the slice name.
+                local slice_names
+                slice_names=$(echo "${all_branches}" | grep "^sparse/${current_user}/${current_feature}/slice/" | cut -d'/' -f5 | sort -u)
+
+                # Provide the list of slice names for completion.
+                COMPREPLY=($(compgen -W "${slice_names}" -- "${cur}"))
+            fi
+            return 0
+            ;;
+
+        *)
+            # No specific completion logic for this subcommand.
+            ;;
+    esac
+}
+
+# Register the completion function '_sparse_completions' for the 'sparse' command.
+# The `-F` flag specifies that we are providing a function to generate completions.
+complete -F _sparse_completions sparse

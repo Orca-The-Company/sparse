@@ -39,7 +39,7 @@ to its corresponding remote (maybe with `git config branch.<branch-name>.remote`
 - Initialization:
   - `git fetch --all --prune` get the absolute latest state from all remotes (maybe omit prune?).
   - We already have slices graph for the active feature. So we can use this graph to loop through slices in feature.
-  - Identify the target branch (e.g., main). This can be done by checking the target of leafNode in slice graph.
+  - Identify the target branch (e.g., main). This can be done by checking the target(recursively until null then ref.createdFrom) of leafNode in slice graph.
 - Merge Detection Loop:
     - Iterate through your slices from bottom to top (slice-1 to slice-N).
     - For each slice-k:

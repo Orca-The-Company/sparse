@@ -18,6 +18,7 @@ pub const GitError = @import("error.zig").GitError;
 pub const GitStrArray = @import("types.zig").GitStrArray;
 pub const GitBuf = @import("types.zig").GitBuf;
 pub const GitOID = @import("types.zig").GitOID;
+pub const GitString = @import("types.zig").GitString;
 pub const GitRepository = @import("repository.zig").GitRepository;
 pub const GitReference = @import("reference.zig").GitReference;
 pub const GitReferenceIterator = @import("reference.zig").GitReferenceIterator;

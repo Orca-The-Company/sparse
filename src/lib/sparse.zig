@@ -6,6 +6,8 @@ pub const Error = error{
     BACKEND_UNABLE_TO_GET_REFS,
     UNABLE_TO_SWITCH_BRANCHES,
     CORRUPTED_FEATURE,
+    RECOVERABLE_ORPHAN_SLICES_IN_FEATURE,
+    RECOVERABLE_FORKED_SLICES_IN_FEATURE,
 };
 
 pub fn feature(
@@ -31,7 +33,7 @@ pub fn feature(
     // git show-ref --branches --head # butun branchleri ve suan ki HEAD i gormemizi
     // sagliyor
     var maybe_active_feature = try Feature.activeFeature(.{
-        .allocator = allocator,
+        .alloc = allocator,
     });
     defer {
         if (maybe_active_feature) |*f| {

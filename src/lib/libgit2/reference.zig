@@ -1,5 +1,6 @@
 const c = @import("c.zig").c;
-const log = @import("std").log.scoped(.reference);
+const std = @import("std");
+const log = std.log.scoped(.reference);
 
 pub const GitReferenceIterator = struct {
     value: ?*c.git_reference_iterator = null,
@@ -34,9 +35,7 @@ pub const GitReferenceIterator = struct {
     }
 
     pub fn next(self: *GitReferenceIterator) !?GitReference {
-        var ref: GitReference = .{
-            ._repo = self._repo,
-        };
+        var ref: GitReference = .{};
 
         const res: c_int = c.git_reference_next(&ref.value, self.value);
         if (res == c.GIT_ITEROVER) {
@@ -52,26 +51,13 @@ pub const GitReferenceIterator = struct {
 
 pub const GitReference = struct {
     value: ?*c.git_reference = null,
-    _repo: GitRepository = undefined,
     _reflog: GitReflog = undefined,
 
-    /// This function is a comparison function which compares lhs' first reflog entry creation time
-    /// with rhs'. When used resulting slice of `GitReference` will have earlier ref as first item.
-    pub fn lessThanFn(context: void, lhs: GitReference, rhs: GitReference) bool {
-        _ = context;
-        const lhs_reflog_entry = lhs.reflog().entryByIndex(lhs.reflog().entrycount() - 1);
-        const lhs_committer = lhs_reflog_entry.?.committer();
-        const rhs_reflog_entry = rhs.reflog().entryByIndex(rhs.reflog().entrycount() - 1);
-        const rhs_committer = rhs_reflog_entry.?.committer();
-
-        return lhs_committer.value.?.when.time < rhs_committer.value.?.when.time;
-    }
-
     pub fn lookup(repo: GitRepository, name_to_look: GitString) !GitReference {
-        var ref: GitReference = .{ ._repo = repo };
+        var ref: GitReference = .{};
         const res: c_int = c.git_reference_lookup(&ref.value, repo.value, @ptrCast(name_to_look));
         if (res == 0) {
-            ref._reflog = GitReflog.read(repo, name_to_look);
+            ref._reflog = try GitReflog.read(repo, name_to_look);
             return ref;
         } else if (res == c.GIT_ENOTFOUND) {
             return GitError.GIT_ENOTFOUND;
@@ -174,14 +160,50 @@ pub const GitReference = struct {
             c.git_reference_free(val);
         }
     }
+
     pub fn name(self: GitReference) GitString {
         return cStringToGitString(c.git_reference_name(self.value));
+    }
+
+    pub fn createdFrom(self: GitReference, repo: GitRepository) ?GitReference {
+        log.debug("createdFrom::", .{});
+        const rlog = self.reflog();
+        const first_entry = rlog.entryByIndex(rlog.entrycount() - 1);
+        if (first_entry == null) {
+            return null;
+        }
+        log.debug(
+            "createdFrom:: first_entry.message:{s}",
+            .{first_entry.?.message()},
+        );
+        var iter = std.mem.splitBackwardsScalar(u8, first_entry.?.message(), ' ');
+        const from = iter.first();
+
+        // last entry can be HEAD so check for valid references
+        if (std.mem.eql(u8, "HEAD", from)) {
+            log.err("createdFrom:: detected HEAD as source, returning null", .{});
+            return null;
+        }
+
+        // TODO: find more efficient way to check if a branch exists
+        const branch = GitBranch.lookup(repo, from, GitBranchType.git_branch_all) catch {
+            log.err("createdFrom:: couldn't find the branch with ref:{s}", .{from});
+            return null;
+        };
+        defer branch.free();
+
+        return GitReference.lookup(repo, branch.ref.name()) catch {
+            log.err("createdFrom:: couldn't find GitReference with ref:{s}", .{from});
+            return null;
+        };
     }
 };
 
 const GitError = @import("error.zig").GitError;
 const GitRepository = @import("repository.zig").GitRepository;
 const GitReflog = @import("reflog.zig").GitReflog;
+const GitBranch = @import("branch.zig").GitBranch;
+const GitBranchType = @import("branch.zig").GitBranchType;
 const GitStrArray = @import("types.zig").GitStrArray;
 const GitString = @import("types.zig").GitString;
 const cStringToGitString = @import("types.zig").cStringToGitString;

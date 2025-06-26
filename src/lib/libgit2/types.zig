@@ -7,7 +7,14 @@ pub fn cStringToGitString(c_string: [*c]const u8) GitString {
 
 pub const GitString = []const u8;
 
-// TODO: git_buf https://libgit2.org/docs/reference/main/buffer/git_buf.html
+/// https://libgit2.org/docs/reference/main/buffer/git_buf.html
+pub const GitBuf = struct {
+    value: ?*c.git_buf = null,
+
+    pub fn dispose(self: GitBuf) void {
+        c.git_buf_dispose(self.value);
+    }
+};
 
 pub const GitStrArray = struct {
     value: ?c.git_strarray = null,

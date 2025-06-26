@@ -42,6 +42,7 @@ pub fn free(self: *Feature, allocator: Allocator) void {
         allocator.free(s);
     }
     if (self.slices) |s| {
+        for (s.items) |*i| i.free(allocator);
         s.deinit();
     }
     allocator.free(self.name);
@@ -53,14 +54,14 @@ pub fn free(self: *Feature, allocator: Allocator) void {
 ///
 /// During this search if any error occurs it returns the error.
 pub fn activeFeature(o: struct {
-    allocator: Allocator,
+    alloc: Allocator,
 }) !?Feature {
     log.debug("activeFeature::", .{});
-    const head_ref = Git.getHeadRef(.{ .allocator = o.allocator }) catch |err| switch (err) {
+    const head_ref = Git.getHeadRef(.{ .allocator = o.alloc }) catch |err| switch (err) {
         error.BACKEND_UNABLE_TO_DETERMINE_CURRENT_BRANCH => return null,
         else => return err,
     };
-    defer head_ref.free(o.allocator);
+    defer head_ref.free(o.alloc);
 
     log.debug(
         "activeFeature:: head_ref:refname={s} head_ref:objectname:{s}",
@@ -72,15 +73,18 @@ pub fn activeFeature(o: struct {
 
     // now we can search for sparse refs
     const slice_array = try Slice.getAllSlicesWith(.{
-        .alloc = o.allocator,
+        .alloc = o.alloc,
     });
-    defer o.allocator.free(slice_array);
+    defer {
+        for (slice_array) |*s| s.free(o.alloc);
+        o.alloc.free(slice_array);
+    }
 
     for (slice_array) |slice| {
         // we are in sparse feature
         if (std.mem.eql(u8, slice.ref.name(), head_ref.refname)) {
             return try Feature.new(.{
-                .alloc = o.allocator,
+                .alloc = o.alloc,
                 .name = sliceNameToFeatureName(slice.ref.name()),
                 .ref = cStringToGitString(slice.ref.target().?.str()),
             });
@@ -100,6 +104,7 @@ pub fn findFeatureByName(o: struct {
         .alloc = o.alloc,
         .in_feature = o.feature_name,
     });
+    // Do not free each slice since they will be freed when feature is freed
     defer o.alloc.free(slice_array);
 
     // ref format: refs/heads/sparse/<username>/<feature_name>/slice/<slice_name>
@@ -112,10 +117,36 @@ pub fn findFeatureByName(o: struct {
         //return try recoverFeatureWithName();
     }
 
+    const orphan_count, const forked_count = try Slice.constructLinks(
+        o.alloc,
+        slice_array,
+    );
+    if (orphan_count > 1) {
+        log.warn(
+            "findFeatureByName:: detected more than 1 orphan slices. (orphan_count:{d})",
+            .{orphan_count},
+        );
+    }
+    if (forked_count > 0) {
+        log.warn(
+            "findFeatureByName:: detected more than 0 forked slices. (forked_count:{d})",
+            .{forked_count},
+        );
+    }
+    const leaves = try Slice.leafNodes(.{ .alloc = o.alloc, .slice_pool = slice_array });
+    defer o.alloc.free(leaves);
+    if (leaves.len == 0) {
+        log.err(
+            "findFeatureByName:: couldn't find leaf slice for feature ('{s}')",
+            .{o.feature_name},
+        );
+        return SparseError.CORRUPTED_FEATURE;
+    }
+
     return try Feature.new(.{
         .alloc = o.alloc,
-        .name = sliceNameToFeatureName(slice_array[0].ref.name()),
-        .ref = cStringToGitString(slice_array[0].ref.target().?.str()),
+        .name = sliceNameToFeatureName(leaves[0].ref.name()),
+        .ref = cStringToGitString(leaves[0].ref.target().?.str()),
         .slices = slice_array,
     });
 }
@@ -227,6 +258,8 @@ fn sliceNameToFeatureName(slice_name: []const u8) []const u8 {
 const constants = @import("constants.zig");
 const Git = @import("system/Git.zig");
 const GitString = @import("libgit2/types.zig").GitString;
+const GitBranch = @import("libgit2/branch.zig").GitBranch;
+const GitBranchType = @import("libgit2/branch.zig").GitBranchType;
 const cStringToGitString = @import("libgit2/types.zig").cStringToGitString;
 const utils = @import("utils.zig");
 const Slice = @import("slice.zig").Slice;

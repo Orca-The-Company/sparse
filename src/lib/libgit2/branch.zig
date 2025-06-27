@@ -98,6 +98,19 @@ pub const GitBranch = struct {
         return cStringToGitString(c_string);
     }
 
+    /// Get the upstream of a branch
+    ///
+    /// Given a reference, this will return a new reference object corresponding
+    /// to its remote tracking branch. The reference must be a local branch.
+    /// If not able to determine the remote ref by the ref object only then it
+    /// tries to get it using ref_name.
+    ///
+    /// https://libgit2.org/docs/reference/main/branch/git_branch_upstream.html
+    ///
+    pub fn upstream(self: GitBranch, repo: GitRepository) !GitReference {
+        return try self._ref.upstream(repo);
+    }
+
     pub fn mergeBase(self: GitBranch) !GitBuf {
         log.debug("mergeBase:: ref.name:{s}", .{self._ref.name()});
         const buf: GitBuf = .{};

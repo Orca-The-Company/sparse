@@ -58,12 +58,10 @@ pub fn target(self: Feature, alloc: Allocator) !?GitReference {
         return SparseError.RECOVERABLE_ORPHAN_SLICES_IN_FEATURE;
     }
     var root_slice: ?*Slice = leaves[0];
-    log.debug("root_slice:{s}", .{root_slice.?.ref.name()});
     // find the root slice
-    while (root_slice != null and root_slice.?.target != null) : (root_slice = root_slice.?.target) {
-        log.debug("root_slice:{s}", .{root_slice.?.ref.name()});
-    }
+    while (root_slice != null and root_slice.?.target != null) : (root_slice = root_slice.?.target) {}
 
+    log.debug("root_slice:{s}", .{root_slice.?.ref.name()});
     return root_slice.?.ref.createdFrom(root_slice.?.repo);
 }
 

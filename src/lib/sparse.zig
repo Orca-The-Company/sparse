@@ -227,7 +227,7 @@ fn jump(o: struct {
             switch (err) {
                 LibGit.GitError.GIT_ENOTFOUND => {
                     result_start_point = null;
-                    break :res GitBranch{ .ref = .{} };
+                    break :res GitBranch{ ._ref = .{} };
                 },
                 else => return err,
             }

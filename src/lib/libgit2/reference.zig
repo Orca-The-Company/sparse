@@ -197,6 +197,44 @@ pub const GitReference = struct {
             return null;
         };
     }
+
+    /// Get the upstream of a branch
+    ///
+    /// Given a reference, this will return a new reference object corresponding
+    /// to its remote tracking branch. The reference must be a local branch.
+    /// If not able to determine the remote ref by the ref object only then it
+    /// tries to get it using ref_name.
+    ///
+    /// https://libgit2.org/docs/reference/main/branch/git_branch_upstream.html
+    ///
+    pub fn upstream(self: GitReference, repo: GitRepository) !GitReference {
+        var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+        defer std.debug.assert(gpa.deinit() == .ok);
+        const allocator = gpa.allocator();
+
+        var ref: GitReference = .{};
+        const res: c_int = c.git_branch_upstream(&ref.value, self.value);
+        if (res == c.GIT_ENOTFOUND) {
+            // TODO: remove hardcoded origin and fall back to default remote
+            const remote_name = try branchRefNameToRemote(
+                allocator,
+                self.name(),
+                "origin",
+            );
+            defer allocator.free(remote_name);
+
+            log.warn(
+                "upstream:: not found by reference, falling back to using ref_name: {s} remote_name:{s}",
+                .{ self.name(), remote_name },
+            );
+            return try GitReference.lookup(repo, remote_name);
+        } else if (res != 0) {
+            log.err("upstream:: unexpected error", .{});
+            return GitError.UNEXPECTED_ERROR;
+        }
+
+        return ref;
+    }
 };
 
 const GitError = @import("error.zig").GitError;
@@ -207,4 +245,5 @@ const GitBranchType = @import("branch.zig").GitBranchType;
 const GitStrArray = @import("types.zig").GitStrArray;
 const GitString = @import("types.zig").GitString;
 const cStringToGitString = @import("types.zig").cStringToGitString;
+const branchRefNameToRemote = @import("types.zig").branchRefNameToRemote;
 const GitOID = @import("types.zig").GitOID;

@@ -192,7 +192,7 @@ pub const GitReference = struct {
         };
         defer branch.free();
 
-        return GitReference.lookup(repo, branch.ref.name()) catch {
+        return GitReference.lookup(repo, branch._ref.name()) catch {
             log.err("createdFrom:: couldn't find GitReference with ref:{s}", .{from});
             return null;
         };

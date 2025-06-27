@@ -48,7 +48,7 @@ to its corresponding remote (maybe with `git config branch.<branch-name>.remote`
         - Check if that commit is an ancestor of the target branch git merge-base --is-ancestor $SLICE_TIP origin/main If this succeeds, the slice (and all below it) are merged.
         - Mark them as such and continue to the next slice.
       - If not, check for a squash merge using the "Comparing Tree Diffs" algorithm described in [Comparing tree diffs](#comparing-tree-diffs-to-determine-if-a-slice-is-merged).
-        - If a squash merge is detected, mark the slice as merged and "re-parent" (need to clarify how to do) the next slice (slice-k+1) to be based on the new origin/main.
+        - If a squash merge is detected, mark the slice as merged and "re-parent" (`git rebase --onto <new-parent> <old-parent> <branch-to-move>`) the next slice (slice-k+1) to be based on the new origin/main.
         - If no merge is detected, stop the loop. slice-k is the first unmerged slice.
 - Rebase Remaining Slices:
   - Once we found the first unmerged slice (slice-k), we know that it and all slices above it (slice-k+1 to slice-N) need to be updated.

@@ -198,6 +198,26 @@ pub const GitReference = struct {
         };
     }
 
+    /// Get the name of a branch
+    ///
+    /// Given a reference, this will return a new string object corresponding
+    /// to its name.
+    ///
+    /// https://libgit2.org/docs/reference/main/branch/git_branch_name.html
+    ///
+    /// @param self The branch reference
+    /// @return The name of the branch
+    pub fn branchName(self: GitReference) !GitString {
+        var c_string: [*:0]const u8 = undefined;
+        const res: c_int = c.git_branch_name(@ptrCast(&c_string), self.value);
+        if (res == c.GIT_EINVALID) {
+            return GitError.GIT_EINVALID;
+        } else if (res != 0) {
+            return GitError.UNEXPECTED_ERROR;
+        }
+        return cStringToGitString(c_string);
+    }
+
     /// Get the upstream of a branch
     ///
     /// Given a reference, this will return a new reference object corresponding

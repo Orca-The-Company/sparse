@@ -11,6 +11,9 @@ const Params = struct {
     _options: struct {
         const Options = @This();
 
+        /// --continue:    continue updating after fixing merge conflicts
+        @"--continue": bool = false,
+
         /// -h, --help:    shows this help message.
         @"--help": *const fn () void = Options.help,
         @"-h": *const fn () void = Options.help,
@@ -51,7 +54,10 @@ pub const UpdateCommand = struct {
         );
         log.debug("parsed update command:: ", .{});
 
-        try Sparse.update(.{ .alloc = alloc });
+        try Sparse.update(.{
+            .alloc = alloc,
+            .@"continue" = params._options.@"--continue",
+        });
 
         return 0;
     }

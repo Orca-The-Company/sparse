@@ -50,6 +50,48 @@ pub const Refs = struct {
     }
 };
 
+/// This function checks if a rebase is in progress.
+/// It returns true if a rebase is in progress, false otherwise.
+pub fn isRebaseInProgress(alloc: std.mem.Allocator, repo: GitRepository) !bool {
+    const git_dir = repo.commondir();
+    const rebase_merge_path = try std.fs.path.join(
+        alloc,
+        &.{ git_dir, "rebase-merge" },
+    );
+    defer alloc.free(rebase_merge_path);
+    logger.debug("isRebaseInProgress:: rebase_merge_path: {s}", .{rebase_merge_path});
+
+    // We wont open the file afterwards so it is ok to check the existence of the directory
+    std.fs.accessAbsolute(rebase_merge_path, .{ .mode = .read_only }) catch |err| {
+        // couldnt find rebase-merge directory trying rebase-apply otherwise no
+        // rebase in progress
+        if (err == std.fs.Dir.AccessError.FileNotFound) {
+            // Try rebase-apply
+            const rebase_apply_path = try std.fs.path.join(
+                alloc,
+                &.{ git_dir, "rebase-apply" },
+            );
+            defer alloc.free(rebase_apply_path);
+            logger.debug("isRebaseInProgress:: rebase_apply_path: {s}", .{rebase_apply_path});
+
+            std.fs.accessAbsolute(
+                rebase_apply_path,
+                .{ .mode = .read_only },
+            ) catch |err_apply| {
+                if (err_apply == std.fs.Dir.AccessError.FileNotFound) {
+                    return false;
+                }
+                return err_apply;
+            };
+            // no error means rebase in progress
+            return true;
+        }
+        return err;
+    };
+
+    return true;
+}
+
 pub fn getHeadRef(o: struct {
     allocator: std.mem.Allocator,
 }) !Ref {
@@ -325,4 +367,6 @@ pub fn rebase(o: struct {
 
 const constants = @import("../constants.zig");
 const utils = @import("../utils.zig");
+const LibGit = @import("../libgit2/libgit2.zig");
+const GitRepository = LibGit.GitRepository;
 const SparseError = @import("../sparse.zig").Error;

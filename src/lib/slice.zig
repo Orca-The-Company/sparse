@@ -2,12 +2,15 @@ const std = @import("std");
 const log = std.log.scoped(.slice);
 const ArrayListUnmanaged = std.ArrayListUnmanaged;
 const Allocator = std.mem.Allocator;
+const StringHashMap = std.StringHashMap;
 
 pub const Slice = struct {
     repo: GitRepository,
     ref: GitReference,
     target: ?*Slice = null,
     children: ArrayListUnmanaged(*Slice) = ArrayListUnmanaged(*Slice).empty,
+    /// cache to hold already calculated isMerged calls
+    _is_merge_into_map: StringHashMap(bool),
 
     /// This function takes the list of slices and loop through all of them and
     /// tries to create target, children relationship between each. In an ideal
@@ -161,16 +164,105 @@ pub const Slice = struct {
             try slices.append(o.alloc, .{
                 .ref = ref,
                 .repo = slice_repo,
+                ._is_merge_into_map = StringHashMap(bool).init(o.alloc),
             });
         }
 
         return try slices.toOwnedSlice(o.alloc);
     }
 
+    pub fn isMerged(self: *Slice, o: struct { alloc: Allocator, into: GitReference }) !bool {
+        log.debug("isMerged:: self.name:{s}", .{self.ref.name()});
+        log.debug("isMerged:: o.into.name:{s}", .{o.into.name()});
+        if (self._is_merge_into_map.contains(o.into.name())) {
+            return self._is_merge_into_map.get(o.into.name()).?;
+        }
+        // object ids should be different otherwise no need to check if it is
+        // merged or not just return false, maybe there is no commit in branch?
+        if (std.mem.eql(u8, &self.ref.target().?.id(), &o.into.target().?.id())) {
+            return false;
+        }
+        const merge_base = GitMerge.base(
+            self.repo,
+            o.into.target().?,
+            self.ref.target().?,
+        ) catch {
+            // TODO: return more appropriate error
+            return SparseError.CORRUPTED_FEATURE;
+        };
+
+        const merge_base_query = try std.fmt.allocPrint(
+            o.alloc,
+            "{s}^{{tree}}",
+            .{merge_base.?.str()},
+        );
+        defer o.alloc.free(merge_base_query);
+        const rr_base_tree = try Git.@"rev-parse"(.{
+            .allocator = o.alloc,
+            .args = &.{
+                merge_base_query,
+            },
+        });
+        defer o.alloc.free(rr_base_tree.stderr);
+        defer o.alloc.free(rr_base_tree.stdout);
+        log.debug("isMerged:: base_tree:{s}", .{rr_base_tree.stdout});
+
+        const slice_tree_query = try std.fmt.allocPrint(
+            o.alloc,
+            "{s}^{{tree}}",
+            .{self.ref.name()},
+        );
+        defer o.alloc.free(slice_tree_query);
+        const rr_slice_tree = try Git.@"rev-parse"(.{
+            .allocator = o.alloc,
+            .args = &.{
+                slice_tree_query,
+            },
+        });
+        defer o.alloc.free(rr_slice_tree.stderr);
+        defer o.alloc.free(rr_slice_tree.stdout);
+        log.debug("isMerged:: slice_tree:{s}", .{rr_slice_tree.stdout});
+
+        const log_tree_query = try std.fmt.allocPrint(
+            o.alloc,
+            "{s}..{s}",
+            .{ merge_base.?.str(), o.into.name() },
+        );
+        defer o.alloc.free(log_tree_query);
+        const rr_log = try Git.log(.{
+            .allocator = o.alloc,
+            .args = &.{
+                "--format=%T",
+                log_tree_query,
+            },
+        });
+        defer o.alloc.free(rr_log.stderr);
+        defer o.alloc.free(rr_log.stdout);
+        log.debug("isMerged:: log:{s}", .{rr_log.stdout});
+
+        // check the logs we got and see if our tree is already merged
+        var log_lines = std.mem.splitScalar(u8, rr_log.stdout, '\n');
+        const trimmed_slice_tree = utils.trimString(rr_slice_tree.stdout, .{});
+        while (log_lines.next()) |line| {
+            const trimmed_log = utils.trimString(line, .{});
+
+            if (std.mem.eql(u8, trimmed_log, trimmed_slice_tree)) {
+                log.debug("isMerged:: slice:{s} is already merged", .{self.ref.name()});
+                try self._is_merge_into_map.put(o.into.name(), true);
+                return true;
+            }
+        }
+        log.debug("isMerged:: slice:{s} is not merged", .{self.ref.name()});
+        try self._is_merge_into_map.put(o.into.name(), false);
+
+        return false;
+    }
+
     pub fn free(self: *Slice, alloc: Allocator) void {
         self.ref.free();
         self.repo.free();
         self.children.deinit(alloc);
+        self._is_merge_into_map.deinit();
     }
 };
 
@@ -178,9 +270,12 @@ const utils = @import("utils.zig");
 const LibGit = @import("libgit2/libgit2.zig");
 const GitConfig = LibGit.GitConfig;
 const GitBranch = LibGit.GitBranch;
+const GitBranchType = LibGit.GitBranchType;
 const GitReference = LibGit.GitReference;
 const GitReferenceIterator = LibGit.GitReferenceIterator;
 const GitRepository = LibGit.GitRepository;
+const GitMerge = LibGit.GitMerge;
 const constants = @import("constants.zig");
 const SparseConfig = @import("config.zig").SparseConfig;
 const SparseError = @import("sparse.zig").Error;
+const Git = @import("system/Git.zig");

@@ -10,14 +10,14 @@ pub const GitBranchType = enum(c_uint) {
 ///
 /// https://libgit2.org/docs/reference/main/branch/index.html
 pub const GitBranch = struct {
-    ref: GitReference = undefined,
+    _ref: GitReference = undefined,
 
     pub fn lookup(repo: GitRepository, branch_name: GitString, branch_type: GitBranchType) !GitBranch {
         log.debug("lookup:: branch_name:{s} branch_type:{}", .{ branch_name, branch_type });
         var branch: GitBranch = .{
-            .ref = .{},
+            ._ref = .{},
         };
-        const res: c_int = c.git_branch_lookup(&branch.ref.value, repo.value, @ptrCast(branch_name), @intFromEnum(branch_type));
+        const res: c_int = c.git_branch_lookup(&branch._ref.value, repo.value, @ptrCast(branch_name), @intFromEnum(branch_type));
         if (res == c.GIT_ENOTFOUND) {
             log.err("lookup:: GIT_ENOTFOUND error occured", .{});
             return GitError.GIT_ENOTFOUND;
@@ -84,7 +84,7 @@ pub const GitBranch = struct {
     /// branch part of it.
     ///
     pub fn name(self: GitBranch) !GitString {
-        return try GitBranch._name(self.ref);
+        return try GitBranch._name(self._ref);
     }
 
     fn _name(ref: GitReference) !GitString {
@@ -98,14 +98,27 @@ pub const GitBranch = struct {
         return cStringToGitString(c_string);
     }
 
+    /// Get the upstream of a branch
+    ///
+    /// Given a reference, this will return a new reference object corresponding
+    /// to its remote tracking branch. The reference must be a local branch.
+    /// If not able to determine the remote ref by the ref object only then it
+    /// tries to get it using ref_name.
+    ///
+    /// https://libgit2.org/docs/reference/main/branch/git_branch_upstream.html
+    ///
+    pub fn upstream(self: GitBranch, repo: GitRepository) !GitReference {
+        return try self._ref.upstream(repo);
+    }
+
     pub fn mergeBase(self: GitBranch) !GitBuf {
-        log.debug("mergeBase:: ref.name:{s}", .{self.ref.name()});
+        log.debug("mergeBase:: ref.name:{s}", .{self._ref.name()});
         const buf: GitBuf = .{};
 
         const res: c_int = c.git_branch_upstream_merge(
             buf.value,
-            self.ref._repo.value,
-            @ptrCast(self.ref.name()),
+            self._ref._repo.value,
+            @ptrCast(self._ref.name()),
         );
 
         if (res != 0) {
@@ -122,7 +135,7 @@ pub const GitBranch = struct {
     }
 
     pub fn free(self: GitBranch) void {
-        self.ref.free();
+        self._ref.free();
     }
 };
 

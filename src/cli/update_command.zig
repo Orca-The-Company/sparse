@@ -51,6 +51,8 @@ pub const UpdateCommand = struct {
         );
         log.debug("parsed update command:: ", .{});
 
+        try Sparse.update(.{ .alloc = alloc });
+
         return 0;
     }
 };

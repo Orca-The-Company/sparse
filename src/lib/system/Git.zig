@@ -1,5 +1,5 @@
 const std = @import("std");
-const log = @import("std").log.scoped(.Git);
+const logger = @import("std").log.scoped(.Git);
 const RunResult = std.process.Child.RunResult;
 
 pub const Ref = struct {
@@ -10,7 +10,7 @@ pub const Ref = struct {
         oname: []const u8,
         rname: []const u8,
     }) !Ref {
-        log.debug("Ref::new:: objectname:{s} refname:{s}", .{ o.oname, o.rname });
+        logger.debug("Ref::new:: objectname:{s} refname:{s}", .{ o.oname, o.rname });
 
         // duping strings since we got them from RunResult which we free before returning
         const oname = try o.alloc.dupe(u8, o.oname);
@@ -23,7 +23,7 @@ pub const Ref = struct {
     }
 
     pub fn free(self: Ref, alloc: std.mem.Allocator) void {
-        log.debug("Ref::free::", .{});
+        logger.debug("Ref::free::", .{});
         alloc.free(self.objectname);
         alloc.free(self.refname);
     }
@@ -35,14 +35,14 @@ pub const Refs = struct {
     list: std.ArrayListUnmanaged(Ref),
 
     pub fn new(alloc: std.mem.Allocator) !Refs {
-        log.debug("Refs::new::", .{});
+        logger.debug("Refs::new::", .{});
         return .{
             .list = try std.ArrayListUnmanaged(Ref).initCapacity(alloc, 4),
         };
     }
 
     pub fn free(self: *Refs, alloc: std.mem.Allocator) void {
-        log.debug("Refs::free::", .{});
+        logger.debug("Refs::free::", .{});
         for (self.list.items) |ref| {
             ref.free(alloc);
         }
@@ -73,7 +73,7 @@ pub fn getHeadRef(o: struct {
     defer o.allocator.free(rr_objectname.stdout);
 
     if (rr_refname.term.Exited != 0 or rr_objectname.term.Exited != 0) {
-        log.debug("getHeadRef:: unable to determine current branch", .{});
+        logger.debug("getHeadRef:: unable to determine current branch", .{});
         return SparseError.BACKEND_UNABLE_TO_DETERMINE_CURRENT_BRANCH;
     }
 
@@ -117,7 +117,7 @@ pub fn getBranchRefs(o: struct {
         return refs;
     }
 
-    log.debug("getBranchRefs:: unable to get refs returning empty", .{});
+    logger.debug("getBranchRefs:: unable to get refs returning empty", .{});
 
     return try Refs.new(o.alloc);
 }
@@ -153,7 +153,7 @@ pub fn getSparseRefs(o: struct {
         }
         return refs;
     }
-    log.debug("getSparseRefs:: unable to get refs", .{});
+    logger.debug("getSparseRefs:: unable to get refs", .{});
     return SparseError.BACKEND_UNABLE_TO_GET_REFS;
 }
 pub fn getFeatureSliceRefs(o: struct {
@@ -203,7 +203,7 @@ pub fn getFeatureSliceRefs(o: struct {
 pub fn branch(options: struct {
     allocator: std.mem.Allocator,
 }) !RunResult {
-    log.debug("branch::", .{});
+    logger.debug("branch::", .{});
     const run_result: RunResult = try std.process.Child.run(.{
         .allocator = options.allocator,
         .argv = &.{ "git", "branch", "-vva" },
@@ -215,7 +215,7 @@ fn @"for-each-ref"(o: struct {
     allocator: std.mem.Allocator,
     args: []const []const u8 = &.{},
 }) !RunResult {
-    log.debug("for-each-ref:: args:{s}", .{o.args});
+    logger.debug("for-each-ref:: args:{s}", .{o.args});
     const command: []const []const u8 = &.{
         "git",
         "for-each-ref",
@@ -235,7 +235,7 @@ fn @"show-ref"(options: struct {
     allocator: std.mem.Allocator,
     args: []const []const u8 = &.{},
 }) !RunResult {
-    log.debug("show-ref:: args:{s}", .{options.args});
+    logger.debug("show-ref:: args:{s}", .{options.args});
     const command: []const []const u8 = &.{
         "git",
         "show-ref",
@@ -255,7 +255,7 @@ pub fn @"rev-parse"(o: struct {
     allocator: std.mem.Allocator,
     args: []const []const u8,
 }) !RunResult {
-    log.debug("rev-parse:: args:{s}", .{o.args});
+    logger.debug("rev-parse:: args:{s}", .{o.args});
     const command: []const []const u8 = &.{
         "git",
         "rev-parse",
@@ -273,10 +273,28 @@ pub fn @"switch"(o: struct {
     allocator: std.mem.Allocator,
     args: []const []const u8,
 }) !RunResult {
-    log.debug("switch:: args:{s}", .{o.args});
+    logger.debug("switch:: args:{s}", .{o.args});
     const command: []const []const u8 = &.{
         "git",
         "switch",
+    };
+    const argv = try utils.combine([]const u8, o.allocator, command, o.args);
+    defer o.allocator.free(argv);
+
+    return try std.process.Child.run(.{
+        .allocator = o.allocator,
+        .argv = argv,
+    });
+}
+
+pub fn log(o: struct {
+    allocator: std.mem.Allocator,
+    args: []const []const u8,
+}) !RunResult {
+    logger.debug("log:: args:{s}", .{o.args});
+    const command: []const []const u8 = &.{
+        "git",
+        "log",
     };
     const argv = try utils.combine([]const u8, o.allocator, command, o.args);
     defer o.allocator.free(argv);

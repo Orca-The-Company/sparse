@@ -27,8 +27,42 @@ pub fn new(o: struct {
             f.slices = try std.ArrayList(Slice).initCapacity(o.alloc, s.len);
             try f.slices.?.appendSlice(s);
         }
+
+        const orphan_count, const forked_count = try Slice.constructLinks(
+            o.alloc,
+            f.slices.?.items,
+        );
+        if (orphan_count > 1) {
+            log.warn(
+                "new:: detected more than 1 orphan slices. (orphan_count:{d})",
+                .{orphan_count},
+            );
+        }
+        if (forked_count > 0) {
+            log.warn(
+                "new:: detected more than 0 forked slices. (forked_count:{d})",
+                .{forked_count},
+            );
+        }
     }
+
     return f;
+}
+
+pub fn target(self: Feature, alloc: Allocator) !?GitReference {
+    if (self.slices == null) return null;
+    const leaves = try Slice.leafNodes(.{ .alloc = alloc, .slice_pool = self.slices.?.items });
+    defer alloc.free(leaves);
+    if (leaves.len > 1) {
+        log.err("target:: feature('{s}') has more than 1 orphan slices({d})", .{ self.name, leaves.len });
+        return SparseError.RECOVERABLE_ORPHAN_SLICES_IN_FEATURE;
+    }
+    var root_slice: ?*Slice = leaves[0];
+    // find the root slice
+    while (root_slice != null and root_slice.?.target != null) : (root_slice = root_slice.?.target) {}
+
+    log.debug("root_slice:{s}", .{root_slice.?.ref.name()});
+    return root_slice.?.ref.createdFrom(root_slice.?.repo);
 }
 
 pub fn free(self: *Feature, allocator: Allocator) void {
@@ -80,22 +114,6 @@ pub fn activeFeature(o: struct {
                 .in_feature = refNameToFeatureName(slice.ref.name()),
             });
             defer o.alloc.free(our_slices);
-            const orphan_count, const forked_count = try Slice.constructLinks(
-                o.alloc,
-                our_slices,
-            );
-            if (orphan_count > 1) {
-                log.warn(
-                    "activeFeature:: detected more than 1 orphan slices. (orphan_count:{d})",
-                    .{orphan_count},
-                );
-            }
-            if (forked_count > 0) {
-                log.warn(
-                    "activeFeature:: detected more than 0 forked slices. (forked_count:{d})",
-                    .{forked_count},
-                );
-            }
 
             return try Feature.new(.{
                 .alloc = o.alloc,
@@ -131,22 +149,6 @@ pub fn findFeatureByName(o: struct {
         //return try recoverFeatureWithName();
     }
 
-    const orphan_count, const forked_count = try Slice.constructLinks(
-        o.alloc,
-        slice_array,
-    );
-    if (orphan_count > 1) {
-        log.warn(
-            "findFeatureByName:: detected more than 1 orphan slices. (orphan_count:{d})",
-            .{orphan_count},
-        );
-    }
-    if (forked_count > 0) {
-        log.warn(
-            "findFeatureByName:: detected more than 0 forked slices. (forked_count:{d})",
-            .{forked_count},
-        );
-    }
     const leaves = try Slice.leafNodes(.{ .alloc = o.alloc, .slice_pool = slice_array });
     defer o.alloc.free(leaves);
     if (leaves.len == 0) {
@@ -391,10 +393,11 @@ test {
 
 const constants = @import("constants.zig");
 const Git = @import("system/Git.zig");
-const GitString = @import("libgit2/types.zig").GitString;
-const GitBranch = @import("libgit2/branch.zig").GitBranch;
-const GitBranchType = @import("libgit2/branch.zig").GitBranchType;
-const cStringToGitString = @import("libgit2/types.zig").cStringToGitString;
+const LibGit = @import("libgit2/libgit2.zig");
+const GitString = LibGit.GitString;
+const GitBranch = LibGit.GitBranch;
+const GitBranchType = LibGit.GitBranchType;
+const GitReference = LibGit.GitReference;
 const utils = @import("utils.zig");
 const Slice = @import("slice.zig").Slice;
 const SparseError = @import("sparse.zig").Error;

@@ -84,18 +84,7 @@ pub const GitBranch = struct {
     /// branch part of it.
     ///
     pub fn name(self: GitBranch) !GitString {
-        return try GitBranch._name(self._ref);
-    }
-
-    fn _name(ref: GitReference) !GitString {
-        var c_string: [*:0]const u8 = undefined;
-        const res: c_int = c.git_branch_name(@ptrCast(&c_string), ref.value);
-        if (res == c.GIT_EINVALID) {
-            return GitError.GIT_EINVALID;
-        } else if (res != 0) {
-            return GitError.UNEXPECTED_ERROR;
-        }
-        return cStringToGitString(c_string);
+        return try self._ref.branchName();
     }
 
     /// Get the upstream of a branch

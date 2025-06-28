@@ -22,18 +22,17 @@ to its corresponding remote (maybe with `git config branch.<branch-name>.remote`
 - Find the leaf slice for the feature (using slice graph)
 - Find the commit that leaf slice is originated from `git merge-base origin/main <slice>`, lets call this `BASE_COMMIT` from now on
 - Constructing signature for the slice to compare later
-  - `BASE_TREE=$(git rev-parse $BASE_COMMIT^{tree})`
-  - `SLICE_TREE=$(git rev-parse <slice>^{tree})`
-  - tuple of `(BASE_TREE, SLICE_TREE)` gives us the signature for the slice
-- Now we can search through the commits in the target branch (`origin/main` in our case)
-  - for given commit `C` on `origin/main`
-    - `PARENT_TREE=$(git rev-parse C^^{tree})`
-    - `COMMIT_TREE=$(git rev-parse C^{tree})`
-    - commit `C` is the squashed version of the changes in `slice` if the diff from `PARENT_TREE` to `COMMIT_TREE` is
-    identical to changes from `BASE_TREE` to `SLICE_TREE`
-      - diff for both can be fetched like this: `git diff-tree --patch $BASE_TREE $SLICE_TREE` << changes in slice
-      - `git diff-tree --patch $PARENT_TREE $COMMIT_TREE` << changes in commit
-      - if the changes are identical then we can mark this slice as merged, need to determine the limit here (how many recent commits to check)
+  - `git merge-base origin/main sparse/talhaHavadar/bbb/slice/1`    >> to find merge base
+  - `git rev-parse 0936548e565e8cb2f418a61f976a0d46344a51eb^{tree}` >> to find tree for the base
+  - `git rev-parse sparse/talhaHavadar/bbb/slice/1^{tree}` >> tree for base
+  -
+  ```
+  git log --format=%T origin/main
+  ecad67691852882849effb28faeba3f2d28dd7aa
+  0c2c47cd29d1e6542aad626705269ba1dfbb5e77
+  a59382a78c21daa47d0f5b035306858aca252eae
+  ```
+  - `git merge-base --is-ancestor $SLICE_TIP origin/main` >> check if it is merged with merge commit
 
 ## Algorithm to update
 - Initialization:
@@ -45,7 +44,7 @@ to its corresponding remote (maybe with `git config branch.<branch-name>.remote`
     - For each slice-k:
       - First, check the easy way: has it been merged by rebase/merge-commit? The commits of a merged branch will be part of the target branch's history.
         - we can get the tip of a slice like (`slice.ref` << this points the tip of the slice)
-        - Check if that commit is an ancestor of the target branch git merge-base --is-ancestor $SLICE_TIP origin/main If this succeeds, the slice (and all below it) are merged.
+        - Check if that commit is an ancestor of the target branch `git merge-base --is-ancestor $SLICE_TIP origin/main` If this succeeds, the slice (and all below it) are merged.
         - Mark them as such and continue to the next slice.
       - If not, check for a squash merge using the "Comparing Tree Diffs" algorithm described in [Comparing tree diffs](#comparing-tree-diffs-to-determine-if-a-slice-is-merged).
         - If a squash merge is detected, mark the slice as merged and "re-parent" (`git rebase --onto <new-parent> <old-parent> <branch-to-move>`) the next slice (slice-k+1) to be based on the new origin/main.

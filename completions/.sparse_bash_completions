@@ -35,7 +35,7 @@ _sparse_completions() {
     feature_names=$(echo "${all_branches}" | grep '^sparse/.*/.*/slice/' | cut -d'/' -f3 | sort -u)
 
     # Define the list of main subcommands for the 'sparse' tool.
-    local subcommands="feature slice rebase merge list clean status show"
+    local subcommands="feature slice update"
 
     # --- Main Completion Logic ---
 

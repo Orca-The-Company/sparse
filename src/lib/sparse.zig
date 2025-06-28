@@ -181,6 +181,42 @@ pub fn slice(o: struct { slice_name: ?[]const u8 }) !void {
     }
 }
 
+/// Gets the active feature and its target, then checks for merged slices.
+/// Finds the first unmerged slice searching from bottom to top. Then re-parents
+/// it to the up-to-date target. Then updates all unmerged slices in the feature.
+///
+/// This function ensures that all unmerged slices are properly updated to the latest
+/// target, ensuring a clean and consistent state within the feature.
+pub fn update(o: struct {
+    alloc: std.mem.Allocator,
+}) !void {
+    try LibGit.init();
+    defer LibGit.shutdown() catch @panic("Oops: couldn't shutdown libgit2, something weird is cooking...");
+
+    var current_feature = try Feature.activeFeature(.{ .alloc = o.alloc });
+    defer {
+        if (current_feature) |*f| f.free(o.alloc);
+    }
+    if (current_feature) |cf| {
+        const target = try cf.target(o.alloc);
+        log.debug("update:: current_feature.name:{s} current_feature.target:{s} current_feature.ref_name:{s}", .{
+            cf.name,
+            if (target) |t| t.name() else "null",
+            cf.ref_name,
+        });
+        //try Slice.printSliceGraph(std.io.getStdOut().writer(), cf.slices.?.items);
+        const leaves = try Slice.leafNodes(.{ .alloc = o.alloc, .slice_pool = cf.slices.?.items });
+        defer o.alloc.free(leaves);
+        var ss: ?*Slice = leaves[0];
+        while (ss != null) : (ss = ss.?.target) {
+            _ = try ss.?.isMerged(.{ .alloc = o.alloc, .into = try target.?.upstream(ss.?.repo) });
+        }
+    } else {
+        log.err("update:: not able to detect current branch", .{});
+        return Error.UNABLE_TO_DETECT_CURRENT_FEATURE;
+    }
+}
+
 pub fn submit(opts: struct {}) !void {
     _ = opts;
     std.debug.print("\n===sparse-submit===\n\n", .{});

@@ -116,6 +116,29 @@ pub const Slice = struct {
         }
     }
 
+    /// Returns the name of a slice from its reference name.
+    /// Assumes that the reference name is in following format
+    /// "refs/heads/sparse/<user_id>/<feature_name>/slice/<slice_name>"
+    ///
+    pub fn name(self: Slice) []const u8 {
+        return sliceNameFromRefName(self.ref.name());
+    }
+
+    /// Returns the name of a slice from its reference name.
+    /// Assumes that the reference name is in following format
+    /// "refs/heads/sparse/<user_id>/<feature_name>/slice/<slice_name>"
+    ///
+    fn sliceNameFromRefName(ref_name: []const u8) []const u8 {
+        // Find the last '/' in the refname
+        const last_slash_index = std.mem.lastIndexOfScalar(u8, ref_name, '/') orelse 0;
+        // The slice name is the substring after the last '/'
+        if (last_slash_index + 1 < ref_name.len) {
+            return ref_name[last_slash_index + 1 ..];
+        } else {
+            return ref_name;
+        }
+    }
+
     ///
     /// Returns all slices available with given constraints.
     ///

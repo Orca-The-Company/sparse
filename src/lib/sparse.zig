@@ -158,7 +158,7 @@ pub fn slice(o: struct { slice_name: ?[]const u8 }) !void {
             if (o.slice_name) |s| {
                 slice_name = s;
                 for (slices.items) |_s| {
-                    if (std.mem.indexOf(u8, _s.ref.name(), slice_name) != null) {
+                    if (std.mem.eql(u8, _s.name(), slice_name)) {
                         create = false;
                         break;
                     }
@@ -388,7 +388,7 @@ fn jump(o: struct {
     start_point: ?[]const u8 = null,
 }) !void {
     log.debug(
-        "jump:: from:{s} to.name:{s} to.ref_name:{s} slice:{s} to:start_point:{s} create:{any}",
+        "jump:: from:{s} to.name:{s} to.ref_name:{s} slice:{s} start_point:{s} create:{any}",
         .{
             if (o.from) |f| f.name else "null",
             o.to.name,

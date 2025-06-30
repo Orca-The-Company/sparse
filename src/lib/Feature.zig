@@ -126,6 +126,9 @@ pub fn activeFeature(o: struct {
     return null;
 }
 
+/// Finds a feature by name.
+/// Name here is refers to <feature_name> portion of the ref name in following format:
+/// refs/heads/sparse/<sparse.user.id>/<feature_name>/slice/<slice_name>
 pub fn findFeatureByName(o: struct {
     alloc: Allocator,
     feature_name: []const u8,

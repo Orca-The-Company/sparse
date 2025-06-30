@@ -11,10 +11,10 @@ pub const Error = error{
 pub const Update = struct {
     const file_name = "update-state";
     const Operation = enum {
-        Created,
-        Analyzed,
-        Reparented,
-        Completed,
+        Create,
+        Analyze,
+        Reparent,
+        Complete,
     };
     const UpdateData = struct {
         feature: ?[]const u8,
@@ -28,12 +28,7 @@ pub const Update = struct {
 
     /// Indicates whether the update is in progress
     pub fn inProgress(self: Update) bool {
-        _ = self;
-        // TODO: Implement update progress tracking
-        // check the existence of the update in progress
-        // we can use .git/sparse/update-state file to determine if
-        // an update is in progress
-        @panic("Not implemented");
+        return self._data.last_operation != .Complete or self._data.last_operation == .Create;
     }
 
     pub fn save(self: Update) !void {
@@ -60,7 +55,7 @@ pub const Update = struct {
                         .target = null,
                         .last_unmerged_slice = null,
                         .old_parent = null,
-                        .last_operation = .Created,
+                        .last_operation = .Create,
                     },
                 };
             }
@@ -82,19 +77,24 @@ pub const Update = struct {
         };
     }
 
-    pub fn free(self: Update, alloc: Allocator) void {
+    pub fn free(self: *Update, alloc: Allocator) void {
         if (self._data.feature) |feature| {
             alloc.free(feature);
+            self._data.feature = null;
         }
         if (self._data.target) |target| {
             alloc.free(target);
+            self._data.target = null;
         }
         if (self._data.old_parent) |old_parent| {
             alloc.free(old_parent);
+            self._data.old_parent = null;
         }
         if (self._data.last_unmerged_slice) |slice| {
             alloc.free(slice);
+            self._data.last_unmerged_slice = null;
         }
+        self._data.last_operation = .Create;
     }
 
     fn stateDir(repo: GitRepository) !std.fs.Dir {

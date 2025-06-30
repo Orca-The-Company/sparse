@@ -7,6 +7,7 @@ pub const Error = error{
     UNABLE_TO_SWITCH_BRANCHES,
     CORRUPTED_FEATURE,
     REPARENTING_FAILED,
+    UPDATE_REFS_FAILED,
     REBASE_IN_PROGRESS,
     UNABLE_TO_DETECT_CURRENT_FEATURE,
     RECOVERABLE_ORPHAN_SLICES_IN_FEATURE,
@@ -200,7 +201,6 @@ pub fn update(o: struct {
 
     var state = try State.Update.load(o.alloc, repo);
     defer state.free(o.alloc);
-    log.debug("update:: Update state:{any}", .{state});
     // Check if a rebase is in progress
     const is_rebase_in_progress = try Git.isRebaseInProgress(o.alloc, repo);
     if (is_rebase_in_progress) {
@@ -214,10 +214,14 @@ pub fn update(o: struct {
         defer {
             if (current_feature) |*f| f.free(o.alloc);
         }
-        if (current_feature) |cf| {
+        if (current_feature) |*cf| {
             const target = try cf.target(o.alloc);
+            // clean up the state
+            state.free(o.alloc);
             state._data.feature = try o.alloc.dupe(u8, cf.name);
             state._data.target = if (target) |t| try o.alloc.dupe(u8, t.name()) else null;
+            state._data.last_operation = .Analyze;
+            try state.save();
             log.debug("update:: current_feature.name:{s} current_feature.target:{s} current_feature.ref_name:{s}", .{
                 cf.name,
                 if (target) |t| t.name() else "null",
@@ -265,9 +269,9 @@ pub fn update(o: struct {
                 // save state of the sparse update we need this information
                 // in case there is a conflict or error during the rebase process
                 // so that we can resume the update from where it left off
+                state._data.last_operation = .Reparent;
                 state._data.last_unmerged_slice = try o.alloc.dupe(u8, lu.ref.name());
                 state._data.old_parent = try o.alloc.dupe(u8, old_parent);
-                state._data.last_operation = .Analyzed;
                 try state.save();
 
                 try reparent(.{
@@ -277,32 +281,9 @@ pub fn update(o: struct {
                     .new_parent = target.?,
                     .branch_to_move = lu.ref,
                 });
-                state._data.last_operation = .Reparented;
-                try state.save();
 
-                // TODO: make update-refs function
-                {
-                    const rr_rebase = try Git.rebase(
-                        .{
-                            .allocator = o.alloc,
-                            .args = &.{
-                                lu.ref.name(),
-                                "--update-refs",
-                            },
-                        },
-                    );
-                    defer o.alloc.free(rr_rebase.stdout);
-                    defer o.alloc.free(rr_rebase.stderr);
-                    log.debug("update:: rebase stdout: {s}", .{rr_rebase.stdout});
-                    if (rr_rebase.term.Exited != 0) {
-                        log.debug("update:: rebase stderr: {s}", .{rr_rebase.stderr});
-                        log.err(
-                            "update:: rebase failed with exit code {d}",
-                            .{rr_rebase.term.Exited},
-                        );
-                        return Error.REPARENTING_FAILED;
-                    }
-                }
+                try jump(.{ .allocator = o.alloc, .to = cf });
+                try updateRefs(.{ .alloc = o.alloc, .target_ref = lu.ref });
 
                 // TODO: cleanup merged slices, loop forward since last_unmerged
                 // is the last unmerged slice
@@ -318,7 +299,7 @@ pub fn update(o: struct {
 
             } else {
                 log.debug("update:: no unmerged slices", .{});
-                state._data.last_operation = .Analyzed;
+                state._data.last_operation = .Analyze;
                 try state.save();
             }
         } else {
@@ -332,7 +313,7 @@ pub fn update(o: struct {
                 return Error.UNABLE_TO_DETECT_CURRENT_FEATURE;
             }
             log.err("update:: already in progress", .{});
-            var feature_updated = Feature.findFeatureByName(.{
+            var feature_updated = try Feature.findFeatureByName(.{
                 .alloc = o.alloc,
                 .feature_name = state._data.feature.?,
             });
@@ -340,7 +321,7 @@ pub fn update(o: struct {
                 if (feature_updated) |*f| f.free(o.alloc);
             }
             switch (state._data.last_operation) {
-                .Created => {
+                .Create => {
                     log.debug("update:: already created", .{});
                     // TODO: so no real update operation has done yet
                     // check if we have feature name at all? if we have then
@@ -349,21 +330,65 @@ pub fn update(o: struct {
                     // otherwise error out
                     return Error.UNABLE_TO_DETECT_CURRENT_FEATURE;
                 },
-                .Analyzed => {
+                .Analyze => {
                     log.debug("update:: already analyzed", .{});
                     // TODO: feature already analyzed but we need to handle remaining
                     // operations, So first check if the feature has any unmerged slices
                     // if there is any then we need to execute reparenting operation
                     // then continue with the rest
-                    return Error.REPARENTING_FAILED;
+                    // if (state._data.last_unmerged_slice == null) {
+                    //     // no need to do anything all seems good
+                    //     state._data.last_operation = .Complete;
+                    //     try state.save();
+                    //     return;
+                    // }
+                    // if (feature_updated) |*f| {
+                    //     const leaves = try Slice.leafNodes(.{
+                    //         .alloc = o.alloc,
+                    //         .slice_pool = f.slices.?.items,
+                    //     });
+                    //     defer o.alloc.free(leaves);
+                    //     const rr = try LibGit.GitRepository.open();
+                    //     defer rr.free();
+
+                    //     const lu = try GitReference.lookup(
+                    //         rr,
+                    //         Utils.trimString(state._data.last_unmerged_slice.?, .{}),
+                    //     );
+                    //     defer lu.free();
+                    //     const target = try GitReference.lookup(repo, state._data.target.?);
+                    //     defer target.free();
+                    //     try reparent(.{
+                    //         .alloc = o.alloc,
+                    //         .tip_slice = leaves[0],
+                    //         .old_parent = state._data.old_parent.?,
+                    //         .new_parent = target,
+                    //         .branch_to_move = lu,
+                    //     });
+                    //     state._data.last_operation = .Reparent;
+                    //     try state.save();
+                    // }
                 },
-                .Reparented => {
+                .Reparent => {
                     log.debug("update:: already reparented", .{});
-                    // TODO: feature is alread reparented but we need to go to the
-                    // tip of the feature and start update-refs from tip to new
-                    // root which is last unmerged slice
+                    if (feature_updated) |*f| {
+                        var lu: ?Slice = null;
+                        for (f.slices.?.items) |s| {
+                            if (std.mem.eql(
+                                u8,
+                                s.ref.name(),
+                                state._data.last_unmerged_slice.?,
+                            )) {
+                                lu = s;
+                            }
+                        }
+                        try jump(.{ .allocator = o.alloc, .to = f });
+                        try updateRefs(.{ .alloc = o.alloc, .target_ref = lu.?.ref });
+                        state._data.last_operation = .Complete;
+                        try state.save();
+                    }
                 },
-                .Completed => {
+                .Complete => {
                     log.warn("update:: already completed", .{});
 
                     // TODO: feature update is already completed it should have
@@ -378,6 +403,32 @@ pub fn submit(opts: struct {}) !void {
     _ = opts;
     std.debug.print("\n===sparse-submit===\n\n", .{});
     std.debug.print("\n====================\n", .{});
+}
+
+fn updateRefs(o: struct {
+    alloc: std.mem.Allocator,
+    target_ref: GitReference,
+}) !void {
+    const rr_rebase = try Git.rebase(
+        .{
+            .allocator = o.alloc,
+            .args = &.{
+                o.target_ref.name(),
+                "--update-refs",
+            },
+        },
+    );
+    defer o.alloc.free(rr_rebase.stdout);
+    defer o.alloc.free(rr_rebase.stderr);
+    log.debug("update:: rebase stdout: {s}", .{rr_rebase.stdout});
+    if (rr_rebase.term.Exited != 0) {
+        log.debug("update:: rebase stderr: {s}", .{rr_rebase.stderr});
+        log.err(
+            "update:: rebase failed with exit code {d}",
+            .{rr_rebase.term.Exited},
+        );
+        return Error.UPDATE_REFS_FAILED;
+    }
 }
 
 fn reparent(o: struct {
@@ -414,24 +465,24 @@ fn reparent(o: struct {
         }
     }
     // do switching to tip no matter what
-    {
-        const rr_switch = try Git.@"switch"(.{
-            .allocator = o.alloc,
-            .args = &.{
-                try o.tip_slice.ref.branchName(),
-            },
-        });
-        defer o.alloc.free(rr_switch.stdout);
-        defer o.alloc.free(rr_switch.stderr);
-        if (rr_switch.term.Exited != 0) {
-            log.debug("update:: switch stderr: {s}", .{rr_switch.stderr});
-            log.err(
-                "update:: switch failed with exit code {d}",
-                .{rr_switch.term.Exited},
-            );
-            return Error.REPARENTING_FAILED;
-        }
-    }
+    // {
+    //     const rr_switch = try Git.@"switch"(.{
+    //         .allocator = o.alloc,
+    //         .args = &.{
+    //             try o.tip_slice.ref.branchName(),
+    //         },
+    //     });
+    //     defer o.alloc.free(rr_switch.stdout);
+    //     defer o.alloc.free(rr_switch.stderr);
+    //     if (rr_switch.term.Exited != 0) {
+    //         log.debug("update:: switch stderr: {s}", .{rr_switch.stderr});
+    //         log.err(
+    //             "update:: switch failed with exit code {d}",
+    //             .{rr_switch.term.Exited},
+    //         );
+    //         return Error.REPARENTING_FAILED;
+    //     }
+    // }
 }
 
 fn jump(o: struct {
@@ -504,3 +555,4 @@ const Git = @import("system/Git.zig");
 const Feature = @import("Feature.zig");
 const Slice = @import("slice.zig").Slice;
 const State = @import("state.zig");
+const Utils = @import("utils.zig");

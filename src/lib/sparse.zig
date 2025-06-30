@@ -198,6 +198,9 @@ pub fn update(o: struct {
     const repo = try LibGit.GitRepository.open();
     defer repo.free();
 
+    var state = try State.Update.load(o.alloc, repo);
+    defer state.free(o.alloc);
+    log.debug("update:: Update state:{any}", .{state});
     // Check if a rebase is in progress
     const is_rebase_in_progress = try Git.isRebaseInProgress(o.alloc, repo);
     if (is_rebase_in_progress) {
@@ -213,6 +216,8 @@ pub fn update(o: struct {
         }
         if (current_feature) |cf| {
             const target = try cf.target(o.alloc);
+            state._data.feature = try o.alloc.dupe(u8, cf.name);
+            state._data.target = if (target) |t| try o.alloc.dupe(u8, t.name()) else null;
             log.debug("update:: current_feature.name:{s} current_feature.target:{s} current_feature.ref_name:{s}", .{
                 cf.name,
                 if (target) |t| t.name() else "null",
@@ -257,9 +262,13 @@ pub fn update(o: struct {
                     }
                 };
 
-                // TODO: save state of the sparse update we need this information
+                // save state of the sparse update we need this information
                 // in case there is a conflict or error during the rebase process
                 // so that we can resume the update from where it left off
+                state._data.last_unmerged_slice = try o.alloc.dupe(u8, lu.ref.name());
+                state._data.old_parent = try o.alloc.dupe(u8, old_parent);
+                state._data.last_operation = .Analyzed;
+                try state.save();
 
                 try reparent(.{
                     .alloc = o.alloc,
@@ -268,7 +277,10 @@ pub fn update(o: struct {
                     .new_parent = target.?,
                     .branch_to_move = lu.ref,
                 });
+                state._data.last_operation = .Reparented;
+                try state.save();
 
+                // TODO: make update-refs function
                 {
                     const rr_rebase = try Git.rebase(
                         .{
@@ -306,15 +318,58 @@ pub fn update(o: struct {
 
             } else {
                 log.debug("update:: no unmerged slices", .{});
+                state._data.last_operation = .Analyzed;
+                try state.save();
             }
         } else {
             if (!o.@"continue") {
                 log.err("update:: not able to detect current branch", .{});
                 return Error.UNABLE_TO_DETECT_CURRENT_FEATURE;
             }
-            // TODO: implement the continue operation
-            // TODO: check if this is a valid continue operation
-            // we need to check there is already a sparse update in progress
+            if (!state.inProgress()) {
+                // TODO: return error indicating that there is no update in progress
+                // so we cannot continue
+                return Error.UNABLE_TO_DETECT_CURRENT_FEATURE;
+            }
+            log.err("update:: already in progress", .{});
+            var feature_updated = Feature.findFeatureByName(.{
+                .alloc = o.alloc,
+                .feature_name = state._data.feature.?,
+            });
+            defer {
+                if (feature_updated) |*f| f.free(o.alloc);
+            }
+            switch (state._data.last_operation) {
+                .Created => {
+                    log.debug("update:: already created", .{});
+                    // TODO: so no real update operation has done yet
+                    // check if we have feature name at all? if we have then
+                    // jump to the tip of the feature and start an update operation
+                    // from the tip of the feature
+                    // otherwise error out
+                    return Error.UNABLE_TO_DETECT_CURRENT_FEATURE;
+                },
+                .Analyzed => {
+                    log.debug("update:: already analyzed", .{});
+                    // TODO: feature already analyzed but we need to handle remaining
+                    // operations, So first check if the feature has any unmerged slices
+                    // if there is any then we need to execute reparenting operation
+                    // then continue with the rest
+                    return Error.REPARENTING_FAILED;
+                },
+                .Reparented => {
+                    log.debug("update:: already reparented", .{});
+                    // TODO: feature is alread reparented but we need to go to the
+                    // tip of the feature and start update-refs from tip to new
+                    // root which is last unmerged slice
+                },
+                .Completed => {
+                    log.warn("update:: already completed", .{});
+
+                    // TODO: feature update is already completed it should have
+                    // been removed so just remove it.
+                },
+            }
         }
     }
 }
@@ -448,3 +503,4 @@ const GitBranchType = LibGit.GitBranchType;
 const Git = @import("system/Git.zig");
 const Feature = @import("Feature.zig");
 const Slice = @import("slice.zig").Slice;
+const State = @import("state.zig");

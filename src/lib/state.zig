@@ -15,12 +15,12 @@ pub const Update = struct {
         Analyzed,
         Reparented,
         Completed,
-        Failed,
     };
     const UpdateData = struct {
         feature: ?[]const u8,
         target: ?[]const u8,
         last_unmerged_slice: ?[]const u8,
+        old_parent: ?[]const u8,
         last_operation: Operation,
     };
     _data: UpdateData,
@@ -59,6 +59,7 @@ pub const Update = struct {
                         .feature = null,
                         .target = null,
                         .last_unmerged_slice = null,
+                        .old_parent = null,
                         .last_operation = .Created,
                     },
                 };
@@ -87,6 +88,9 @@ pub const Update = struct {
         }
         if (self._data.target) |target| {
             alloc.free(target);
+        }
+        if (self._data.old_parent) |old_parent| {
+            alloc.free(old_parent);
         }
         if (self._data.last_unmerged_slice) |slice| {
             alloc.free(slice);

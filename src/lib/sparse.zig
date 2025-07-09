@@ -5,6 +5,7 @@ pub const Error = error{
     BACKEND_UNABLE_TO_DETERMINE_CURRENT_BRANCH,
     BACKEND_UNABLE_TO_GET_REFS,
     UNABLE_TO_SWITCH_BRANCHES,
+    UNABLE_TO_PUSH_SLICE,
     CORRUPTED_FEATURE,
     REPARENTING_FAILED,
     UPDATE_REFS_FAILED,
@@ -215,93 +216,8 @@ pub fn update(o: struct {
             if (current_feature) |*f| f.free(o.alloc);
         }
         if (current_feature) |*cf| {
-            const target = try cf.target(o.alloc);
             // clean up the state
-            state.free(o.alloc);
-            state._data.feature = try o.alloc.dupe(u8, cf.name);
-            state._data.target = if (target) |t| try o.alloc.dupe(u8, t.name()) else null;
-            state._data.last_operation = .Analyze;
-            try state.save();
-            log.debug("update:: current_feature.name:{s} current_feature.target:{s} current_feature.ref_name:{s}", .{
-                cf.name,
-                if (target) |t| t.name() else "null",
-                cf.ref_name,
-            });
-            const leaves = try Slice.leafNodes(.{
-                .alloc = o.alloc,
-                .slice_pool = cf.slices.?.items,
-            });
-            defer o.alloc.free(leaves);
-            var ss: ?*Slice = leaves[0];
-            const upstream = try target.?.upstream(ss.?.repo);
-            defer upstream.free();
-
-            var last_unmerged: ?*Slice = ss;
-            while (ss != null) : (ss = ss.?.target) {
-                const is_merged = try ss.?.isMerged(.{
-                    .alloc = o.alloc,
-                    .into = upstream,
-                });
-                if (!is_merged) {
-                    last_unmerged = ss;
-                } else break;
-            }
-            if (last_unmerged) |lu| {
-                log.debug("update:: last_unmerged:{s}", .{lu.ref.name()});
-                // re-parent last_unmerged to target
-                // rebase all slices from tip to target
-                // git rebase --onto <new-parent> <old-parent> <branch-to-move>
-                const old_parent = res: {
-                    if (lu.ref.createdFrom(lu.repo)) |op_ref| {
-                        break :res op_ref.name();
-                    } else {
-                        if (target) |t| {
-                            break :res t.name();
-                        } else {
-                            // TODO: Handle the case when target is null
-                            // At least fall back to default target for sparse in
-                            // git config, maybe something like `sparse.default.target`
-                            break :res "main";
-                        }
-                    }
-                };
-
-                // save state of the sparse update we need this information
-                // in case there is a conflict or error during the rebase process
-                // so that we can resume the update from where it left off
-                state._data.last_operation = .Reparent;
-                state._data.last_unmerged_slice = try o.alloc.dupe(u8, lu.ref.name());
-                state._data.old_parent = try o.alloc.dupe(u8, old_parent);
-                try state.save();
-
-                try reparent(.{
-                    .alloc = o.alloc,
-                    .tip_slice = leaves[0],
-                    .old_parent = old_parent,
-                    .new_parent = target.?,
-                    .branch_to_move = lu.ref,
-                });
-
-                try jump(.{ .allocator = o.alloc, .to = cf });
-                try updateRefs(.{ .alloc = o.alloc, .target_ref = lu.ref });
-
-                // TODO: cleanup merged slices, loop forward since last_unmerged
-                // is the last unmerged slice
-                // var current = lu;
-                // while (current != null) : (current = current.?.target) {
-                //     if (current.?.isMerged(.{
-                //         .alloc = o.alloc,
-                //         .into = try target.?.upstream(current.?.repo),
-                //     })) {
-                //         current.?.cleanupMergedSlices(o.alloc);
-                //     }
-                // }
-
-            } else {
-                log.debug("update:: no unmerged slices", .{});
-                state._data.last_operation = .Analyze;
-                try state.save();
-            }
+            try updateGoodWeather(.{ .alloc = o.alloc, .feature = cf, .state = &state });
         } else {
             if (!o.@"continue") {
                 log.err("update:: not able to detect current branch", .{});
@@ -310,91 +226,11 @@ pub fn update(o: struct {
             if (!state.inProgress()) {
                 // TODO: return error indicating that there is no update in progress
                 // so we cannot continue
+                try state.delete();
                 return Error.UNABLE_TO_DETECT_CURRENT_FEATURE;
             }
             log.err("update:: already in progress", .{});
-            var feature_updated = try Feature.findFeatureByName(.{
-                .alloc = o.alloc,
-                .feature_name = state._data.feature.?,
-            });
-            defer {
-                if (feature_updated) |*f| f.free(o.alloc);
-            }
-            switch (state._data.last_operation) {
-                .Create => {
-                    log.debug("update:: already created", .{});
-                    // TODO: so no real update operation has done yet
-                    // check if we have feature name at all? if we have then
-                    // jump to the tip of the feature and start an update operation
-                    // from the tip of the feature
-                    // otherwise error out
-                    return Error.UNABLE_TO_DETECT_CURRENT_FEATURE;
-                },
-                .Analyze => {
-                    log.debug("update:: already analyzed", .{});
-                    // TODO: feature already analyzed but we need to handle remaining
-                    // operations, So first check if the feature has any unmerged slices
-                    // if there is any then we need to execute reparenting operation
-                    // then continue with the rest
-                    // if (state._data.last_unmerged_slice == null) {
-                    //     // no need to do anything all seems good
-                    //     state._data.last_operation = .Complete;
-                    //     try state.save();
-                    //     return;
-                    // }
-                    // if (feature_updated) |*f| {
-                    //     const leaves = try Slice.leafNodes(.{
-                    //         .alloc = o.alloc,
-                    //         .slice_pool = f.slices.?.items,
-                    //     });
-                    //     defer o.alloc.free(leaves);
-                    //     const rr = try LibGit.GitRepository.open();
-                    //     defer rr.free();
-
-                    //     const lu = try GitReference.lookup(
-                    //         rr,
-                    //         Utils.trimString(state._data.last_unmerged_slice.?, .{}),
-                    //     );
-                    //     defer lu.free();
-                    //     const target = try GitReference.lookup(repo, state._data.target.?);
-                    //     defer target.free();
-                    //     try reparent(.{
-                    //         .alloc = o.alloc,
-                    //         .tip_slice = leaves[0],
-                    //         .old_parent = state._data.old_parent.?,
-                    //         .new_parent = target,
-                    //         .branch_to_move = lu,
-                    //     });
-                    //     state._data.last_operation = .Reparent;
-                    //     try state.save();
-                    // }
-                },
-                .Reparent => {
-                    log.debug("update:: already reparented", .{});
-                    if (feature_updated) |*f| {
-                        var lu: ?Slice = null;
-                        for (f.slices.?.items) |s| {
-                            if (std.mem.eql(
-                                u8,
-                                s.ref.name(),
-                                state._data.last_unmerged_slice.?,
-                            )) {
-                                lu = s;
-                            }
-                        }
-                        try jump(.{ .allocator = o.alloc, .to = f });
-                        try updateRefs(.{ .alloc = o.alloc, .target_ref = lu.?.ref });
-                        state._data.last_operation = .Complete;
-                        try state.save();
-                    }
-                },
-                .Complete => {
-                    log.warn("update:: already completed", .{});
-
-                    // TODO: feature update is already completed it should have
-                    // been removed so just remove it.
-                },
-            }
+            try handleUpdateInProgress(o.alloc, &state);
         }
     }
 }
@@ -437,52 +273,236 @@ fn reparent(o: struct {
     new_parent: GitReference,
     old_parent: []const u8,
     branch_to_move: GitReference,
-    continuing: bool = false,
 }) !void {
-    if (!o.continuing) {
-        const rr_rebase = try Git.rebase(.{
+    // TODO: check if old_parent and new_parent are the same if so no need to re-parent
+    const rr_rebase = try Git.rebase(.{
+        .allocator = o.alloc,
+        .args = &[_][]const u8{
+            "-r",
+            "--onto",
+            o.new_parent.name(),
+            o.old_parent,
+            o.branch_to_move.name(),
+            "--update-refs",
+        },
+    });
+    defer o.alloc.free(rr_rebase.stderr);
+    defer o.alloc.free(rr_rebase.stdout);
+    log.debug("update:: rebase stdout: {s}", .{rr_rebase.stdout});
+    log.debug("update:: rebase stderr: {s}", .{rr_rebase.stderr});
+    if (rr_rebase.term.Exited != 0) {
+        log.err(
+            "update:: rebase failed during re-parenting with exit code {d}",
+            .{rr_rebase.term.Exited},
+        );
+        // TODO: let user know what to do next
+        return Error.REPARENTING_FAILED;
+    }
+    // do switching to tip no matter what
+    {
+        const rr_switch = try Git.@"switch"(.{
             .allocator = o.alloc,
-            .args = &[_][]const u8{
-                "-r",
-                "--onto",
-                o.new_parent.name(),
-                o.old_parent,
-                o.branch_to_move.name(),
-                "--update-refs",
+            .args = &.{
+                "-C",
+                try o.tip_slice.ref.branchName(),
             },
         });
-        defer o.alloc.free(rr_rebase.stderr);
-        defer o.alloc.free(rr_rebase.stdout);
-        log.debug("update:: rebase stdout: {s}", .{rr_rebase.stdout});
-        if (rr_rebase.term.Exited != 0) {
-            log.debug("update:: rebase stderr: {s}", .{rr_rebase.stderr});
+        defer o.alloc.free(rr_switch.stdout);
+        defer o.alloc.free(rr_switch.stderr);
+        if (rr_switch.term.Exited != 0) {
+            log.debug("update:: switch stderr: {s}", .{rr_switch.stderr});
             log.err(
-                "update:: rebase failed during re-parenting with exit code {d}",
-                .{rr_rebase.term.Exited},
+                "update:: switch failed with exit code {d}",
+                .{rr_switch.term.Exited},
             );
-            // TODO: let user know what to do next
             return Error.REPARENTING_FAILED;
         }
     }
-    // do switching to tip no matter what
-    // {
-    //     const rr_switch = try Git.@"switch"(.{
-    //         .allocator = o.alloc,
-    //         .args = &.{
-    //             try o.tip_slice.ref.branchName(),
-    //         },
-    //     });
-    //     defer o.alloc.free(rr_switch.stdout);
-    //     defer o.alloc.free(rr_switch.stderr);
-    //     if (rr_switch.term.Exited != 0) {
-    //         log.debug("update:: switch stderr: {s}", .{rr_switch.stderr});
-    //         log.err(
-    //             "update:: switch failed with exit code {d}",
-    //             .{rr_switch.term.Exited},
-    //         );
-    //         return Error.REPARENTING_FAILED;
-    //     }
-    // }
+}
+
+fn updateGoodWeather(o: struct {
+    alloc: std.mem.Allocator,
+    feature: *Feature,
+    state: *State.Update,
+}) !void {
+    // TODO: run git fetch to update remote branches
+    const target = try o.feature.target(o.alloc);
+    o.state.free(o.alloc);
+    o.state._data.feature = try o.alloc.dupe(u8, o.feature.name);
+    o.state._data.target = if (target) |t| try o.alloc.dupe(u8, t.name()) else null;
+    o.state._data.last_operation = .Analyze;
+    try o.state.save();
+    log.debug("update:: current_feature.name:{s} current_feature.target:{s} current_feature.ref_name:{s}", .{
+        o.feature.name,
+        if (target) |t| t.name() else "null",
+        o.feature.ref_name,
+    });
+    const leaves = try Slice.leafNodes(.{
+        .alloc = o.alloc,
+        .slice_pool = o.feature.slices.?.items,
+    });
+    defer o.alloc.free(leaves);
+    var ss: ?*Slice = leaves[0];
+    const upstream = try target.?.upstream(ss.?.repo);
+    defer upstream.free();
+
+    // TODO: double check if is merged working as expected for rebased changes
+    var last_unmerged = res: {
+        if (ss) |s| {
+            if (try s.isMerged(.{ .alloc = o.alloc, .into = upstream })) {
+                break :res null;
+            } else {
+                break :res s;
+            }
+        } else {
+            break :res null;
+        }
+    };
+    while (ss != null) : (ss = ss.?.target) {
+        const is_merged = try ss.?.isMerged(.{
+            .alloc = o.alloc,
+            .into = upstream,
+        });
+        if (!is_merged) {
+            last_unmerged = ss;
+        } else break;
+    }
+    if (last_unmerged) |lu| {
+        log.debug("update:: last_unmerged:{s}", .{lu.ref.name()});
+        // re-parent last_unmerged to target
+        // rebase all slices from tip to target
+        // git rebase --onto <new-parent> <old-parent> <branch-to-move>
+        const old_parent = res: {
+            if (lu.ref.createdFrom(lu.repo)) |op_ref| {
+                break :res op_ref.name();
+            } else {
+                if (target) |t| {
+                    break :res t.name();
+                } else {
+                    // TODO: Handle the case when target is null
+                    // At least fall back to default target for sparse in
+                    // git config, maybe something like `sparse.default.target`
+                    break :res "main";
+                }
+            }
+        };
+        log.debug("update:: old_parent:{s}", .{old_parent});
+
+        // save state of the sparse update we need this information
+        // in case there is a conflict or error during the rebase process
+        // so that we can resume the update from where it left off
+        o.state._data.last_operation = .Reparent;
+        o.state._data.last_unmerged_slice = try o.alloc.dupe(u8, lu.ref.name());
+        o.state._data.old_parent = try o.alloc.dupe(u8, old_parent);
+        try o.state.save();
+
+        try reparent(.{
+            .alloc = o.alloc,
+            .tip_slice = leaves[0],
+            .old_parent = old_parent,
+            .new_parent = upstream,
+            .branch_to_move = lu.ref,
+        });
+        //try jump(.{ .allocator = o.alloc, .to = o.feature });
+        try updateRefs(.{ .alloc = o.alloc, .target_ref = lu.ref });
+        // push all unmerged slices in remotes
+        ss = leaves[0];
+        while (ss != null) : (ss = ss.?.target) {
+            const is_merged = try ss.?.isMerged(.{
+                .alloc = o.alloc,
+                .into = upstream,
+            });
+            if (!is_merged) {
+                try ss.?.activate(o.alloc);
+                try ss.?.push(o.alloc);
+            } else break;
+        }
+        try jump(.{ .allocator = o.alloc, .to = o.feature });
+        try o.state.delete();
+
+        // TODO: cleanup merged slices, loop forward since last_unmerged
+        // is the last unmerged slice
+        // var current = lu;
+        // while (current != null) : (current = current.?.target) {
+        //     if (current.?.isMerged(.{
+        //         .alloc = o.alloc,
+        //         .into = try target.?.upstream(current.?.repo),
+        //     })) {
+        //         current.?.cleanupMergedSlices(o.alloc);
+        //     }
+        // }
+    } else {
+        log.debug("update:: no unmerged slices", .{});
+        try o.state.delete();
+    }
+}
+
+fn handleUpdateInProgress(alloc: std.mem.Allocator, state: *State.Update) !void {
+    var feature_updated = try Feature.findFeatureByName(.{
+        .alloc = alloc,
+        .feature_name = state._data.feature.?,
+    });
+    defer {
+        if (feature_updated) |*f| f.free(alloc);
+    }
+    switch (state._data.last_operation) {
+        .Create, .Analyze => {
+            log.debug("update:: failed when create or analyze command is called before, retrying..", .{});
+            if (feature_updated) |*f| {
+                try jump(.{
+                    .allocator = alloc,
+                    .to = f,
+                });
+                try updateGoodWeather(.{ .alloc = alloc, .feature = f, .state = state });
+            } else {
+                return Error.UNABLE_TO_DETECT_CURRENT_FEATURE;
+            }
+            return Error.UNABLE_TO_DETECT_CURRENT_FEATURE;
+        },
+        .Reparent => {
+            log.debug("update:: failed when reparent command is called before", .{});
+            if (feature_updated) |*f| {
+                var lu: ?Slice = null;
+                for (f.slices.?.items) |s| {
+                    if (std.mem.eql(
+                        u8,
+                        s.ref.name(),
+                        state._data.last_unmerged_slice.?,
+                    )) {
+                        lu = s;
+                    }
+                }
+                try jump(.{ .allocator = alloc, .to = f });
+                try updateRefs(.{ .alloc = alloc, .target_ref = lu.?.ref });
+                const leaves = try Slice.leafNodes(.{
+                    .alloc = alloc,
+                    .slice_pool = f.slices.?.items,
+                });
+                defer alloc.free(leaves);
+                var ss: ?*Slice = leaves[0];
+                var target = try GitReference.lookup(ss.?.repo, state._data.target.?);
+                defer target.free();
+                const upstream = try target.upstream(ss.?.repo);
+                defer upstream.free();
+                while (ss != null) : (ss = ss.?.target) {
+                    const is_merged = try ss.?.isMerged(.{
+                        .alloc = alloc,
+                        .into = upstream,
+                    });
+                    if (!is_merged) {
+                        try ss.?.activate(alloc);
+                        try ss.?.push(alloc);
+                    } else break;
+                }
+                try jump(.{ .allocator = alloc, .to = f });
+                try state.delete();
+            }
+        },
+        .Complete => {
+            log.debug("update:: failed when complete command is called before, no need to continue updating", .{});
+            try state.delete();
+        },
+    }
 }
 
 fn jump(o: struct {

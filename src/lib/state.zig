@@ -40,6 +40,12 @@ pub const Update = struct {
         try std.zon.stringify.serialize(self._data, .{}, file.writer());
     }
 
+    pub fn delete(self: Update) !void {
+        var state_dir = try Update.stateDir(self._repo);
+        defer state_dir.close();
+        try state_dir.deleteFile(file_name);
+    }
+
     pub fn load(alloc: Allocator, repo: GitRepository) !Update {
         var state_dir = try Update.stateDir(repo);
         defer state_dir.close();

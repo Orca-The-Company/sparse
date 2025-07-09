@@ -281,6 +281,49 @@ pub const Slice = struct {
         return false;
     }
 
+    pub fn activate(self: Slice, alloc: Allocator) !void {
+        const rr_switch = try Git.@"switch"(
+            .{
+                .allocator = alloc,
+                .args = &.{
+                    try self.ref.branchName(),
+                },
+            },
+        );
+        defer alloc.free(rr_switch.stderr);
+        defer alloc.free(rr_switch.stdout);
+        if (rr_switch.term.Exited != 0) {
+            log.debug("activate:: switch stderr: {s}", .{rr_switch.stderr});
+            log.err(
+                "activate:: switch failed with exit code {d}",
+                .{rr_switch.term.Exited},
+            );
+            return SparseError.UNABLE_TO_SWITCH_BRANCHES;
+        }
+    }
+
+    pub fn push(self: Slice, alloc: Allocator) !void {
+        const rr_push = try Git.push(.{
+            .allocator = alloc,
+            .args = &.{
+                "--force-with-lease",
+                // TODO: use proper remote here
+                "origin",
+                try self.ref.branchName(),
+            },
+        });
+        defer alloc.free(rr_push.stderr);
+        defer alloc.free(rr_push.stdout);
+        if (rr_push.term.Exited != 0) {
+            log.debug("push:: push stderr: {s}", .{rr_push.stderr});
+            log.err(
+                "push:: push failed with exit code {d}",
+                .{rr_push.term.Exited},
+            );
+            return SparseError.UNABLE_TO_PUSH_SLICE;
+        }
+    }
+
     pub fn free(self: *Slice, alloc: Allocator) void {
         self.ref.free();
         self.repo.free();

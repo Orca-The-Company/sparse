@@ -205,19 +205,28 @@ pub const Slice = struct {
         if (std.mem.eql(u8, &self.ref.target().?.id(), &o.into.target().?.id())) {
             return false;
         }
-        const merge_base = GitMerge.base(
-            self.repo,
-            o.into.target().?,
-            self.ref.target().?,
-        ) catch {
-            // TODO: return more appropriate error
-            return SparseError.CORRUPTED_FEATURE;
+
+        // TODO: replace this with libgit2 version
+        const merge_base = res: {
+            const rr_merge_base = try Git.@"merge-base"(.{
+                .allocator = o.alloc,
+                .args = &.{
+                    o.into.name(),
+                    self.ref.name(),
+                },
+            });
+            defer o.alloc.free(rr_merge_base.stderr);
+            defer o.alloc.free(rr_merge_base.stdout);
+            const trimmed_stdout = utils.trimString(rr_merge_base.stdout, .{});
+            log.debug("isMerged:: merge_base:{s}", .{trimmed_stdout});
+            break :res try o.alloc.dupe(u8, trimmed_stdout);
         };
+        defer o.alloc.free(merge_base);
 
         const merge_base_query = try std.fmt.allocPrint(
             o.alloc,
             "{s}^{{tree}}",
-            .{merge_base.?.str()},
+            .{merge_base},
         );
         defer o.alloc.free(merge_base_query);
         const rr_base_tree = try Git.@"rev-parse"(.{
@@ -249,7 +258,7 @@ pub const Slice = struct {
         const log_tree_query = try std.fmt.allocPrint(
             o.alloc,
             "{s}..{s}",
-            .{ merge_base.?.str(), o.into.name() },
+            .{ merge_base, o.into.name() },
         );
         defer o.alloc.free(log_tree_query);
         const rr_log = try Git.log(.{

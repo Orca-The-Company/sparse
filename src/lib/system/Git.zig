@@ -383,6 +383,24 @@ pub fn push(o: struct {
     });
 }
 
+pub fn @"merge-base"(o: struct {
+    allocator: std.mem.Allocator,
+    args: []const []const u8,
+}) !RunResult {
+    logger.debug("merge-base:: args:{s}", .{o.args});
+    const command: []const []const u8 = &.{
+        "git",
+        "merge-base",
+    };
+    const argv = try utils.combine([]const u8, o.allocator, command, o.args);
+    defer o.allocator.free(argv);
+
+    return try std.process.Child.run(.{
+        .allocator = o.allocator,
+        .argv = argv,
+    });
+}
+
 const constants = @import("../constants.zig");
 const utils = @import("../utils.zig");
 const LibGit = @import("../libgit2/libgit2.zig");

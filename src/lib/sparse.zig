@@ -215,6 +215,13 @@ pub fn update(o: struct {
         defer {
             if (current_feature) |*f| f.free(o.alloc);
         }
+
+        {
+            const rr_fetch = try Git.fetch(.{ .allocator = o.alloc, .args = &.{} });
+            defer o.alloc.free(rr_fetch.stderr);
+            defer o.alloc.free(rr_fetch.stdout);
+        }
+
         if (current_feature) |*cf| {
             // clean up the state
             try updateGoodWeather(.{ .alloc = o.alloc, .feature = cf, .state = &state });
@@ -325,7 +332,6 @@ fn updateGoodWeather(o: struct {
     feature: *Feature,
     state: *State.Update,
 }) !void {
-    // TODO: run git fetch to update remote branches
     const target = try o.feature.target(o.alloc);
     o.state.free(o.alloc);
     o.state._data.feature = try o.alloc.dupe(u8, o.feature.name);

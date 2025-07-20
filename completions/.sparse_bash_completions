@@ -13,6 +13,7 @@
 # 4. Type `sparse ` and press the Tab key to see the available subcommands.
 #    Type `sparse feature ` and press Tab to see a clean list of existing feature names.
 #    Type `sparse slice ` and press Tab to see a clean list of slice names for the current feature.
+#    Type `sparse status ` and press Tab to see available options (--help, -h).
 
 _sparse_completions() {
     # COMP_WORDS: An array containing the individual words in the current command line.
@@ -35,7 +36,7 @@ _sparse_completions() {
     feature_names=$(echo "${all_branches}" | grep '^sparse/.*/.*/slice/' | cut -d'/' -f3 | sort -u)
 
     # Define the list of main subcommands for the 'sparse' tool.
-    local subcommands="feature slice update"
+    local subcommands="feature slice update status"
 
     # --- Main Completion Logic ---
 
@@ -98,6 +99,18 @@ _sparse_completions() {
 
                 # Provide the list of slice names for completion.
                 COMPREPLY=($(compgen -W "${slice_names}" -- "${cur}"))
+            fi
+            return 0
+            ;;
+
+        status)
+            # --- Completion logic for `sparse status` ---
+            local status_opts="--help -h"
+
+            # Suggest options if the current word starts with a dash.
+            if [[ "${cur}" == -* ]]; then
+                COMPREPLY=($(compgen -W "${status_opts}" -- "${cur}"))
+                return 0
             fi
             return 0
             ;;

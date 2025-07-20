@@ -236,6 +236,118 @@ pub fn update(o: struct {
     }
 }
 
+/// Displays comprehensive status information for the currently active sparse feature.
+///
+/// This function provides a detailed overview of the current feature's state, including:
+/// - Active feature identification
+/// - Slice structure analysis (orphan and forked slice counts)
+/// - Visual slice relationship graph
+/// - Individual slice merge status against the target branch
+///
+/// ## Behavior
+/// 1. Checks for an active sparse feature using `Feature.activeFeature()`
+/// 2. If no active feature exists, displays "No active feature" and returns
+/// 3. For active features, performs structural analysis via `Slice.constructLinks()`
+/// 4. Displays warnings if slice structure is non-ideal (orphan_count != 1 or forked_count != 0)
+/// 5. Shows the feature's target branch using `Feature.target()`
+/// 6. Renders a visual graph of slice relationships via `Slice.printSliceGraph()`
+/// 7. Lists merge status of each slice against the target using `Slice.isMerged()`
+///
+/// ## Ideal Feature Structure
+/// - Exactly 1 orphan slice (root of the feature)
+/// - 0 forked slices (no branching within the feature)
+///
+/// ## Output
+/// All user-facing information is written to stdout for proper shell integration.
+/// Debug information is logged using the sparse logger.
+///
+/// ## Memory Management
+/// All allocations are properly managed with defer statements. The function is safe
+/// against memory leaks even in error conditions.
+///
+/// ## Errors
+/// Returns error if Git operations fail or if LibGit2 initialization fails.
+pub fn status(o: struct {
+    alloc: std.mem.Allocator,
+}) !void {
+    try LibGit.init();
+    defer LibGit.shutdown() catch @panic("Oops: couldn't shutdown libgit2, something weird is cooking...");
+
+    const stdout = std.io.getStdOut().writer();
+    log.debug("status:: checking for active feature", .{});
+
+    // Check if we are currently on an active feature
+    const active_feature = try Feature.activeFeature(.{ .alloc = o.alloc });
+
+    if (active_feature == null) {
+        try stdout.print("No active feature\n", .{});
+        return;
+    }
+
+    var current_feature = active_feature.?;
+    defer current_feature.free(o.alloc);
+
+    log.debug("status:: found active feature: {s}", .{current_feature.name});
+    try stdout.print("Active feature: {s}\n", .{current_feature.name});
+
+    // Check if we have slices
+    if (current_feature.slices == null) {
+        try stdout.print("Feature has no slices\n", .{});
+        return;
+    }
+
+    const slices = current_feature.slices.?.items;
+
+    // Do sanity checks for orphan and forked slices using constructLinks
+    // This function analyzes the slice relationships and returns counts
+    const orphan_count, const forked_count = try Slice.constructLinks(o.alloc, slices);
+
+    log.debug("status:: slice analysis - orphan_count: {d}, forked_count: {d}", .{ orphan_count, forked_count });
+    try stdout.print("\nSlice analysis:\n", .{});
+    try stdout.print("  Orphan slices: {d} (ideal: 1)\n", .{orphan_count});
+    try stdout.print("  Forked slices: {d} (ideal: 0)\n", .{forked_count});
+
+    // Warn if we don't have the ideal slice structure
+    if (orphan_count != 1) {
+        log.warn("status:: unexpected orphan slice count: {d}", .{orphan_count});
+        try stdout.print("  ⚠ Warning: Expected exactly 1 orphan slice, found {d}\n", .{orphan_count});
+    }
+    if (forked_count != 0) {
+        log.warn("status:: unexpected forked slice count: {d}", .{forked_count});
+        try stdout.print("  ⚠ Warning: Expected 0 forked slices, found {d}\n", .{forked_count});
+    }
+
+    // Get the target of the feature
+    const target_ref = try current_feature.target(o.alloc);
+    if (target_ref) |target| {
+        defer target.free();
+        log.debug("status:: feature target: {s}", .{target.name()});
+        try stdout.print("\nFeature target: {s}\n", .{target.name()});
+
+        // Print slice graph showing the relationship between slices
+        try stdout.print("\nSlice graph:\n", .{});
+        try Slice.printSliceGraph(stdout, slices);
+
+        // List merge status of each slice in the feature
+        try stdout.print("\nMerge status:\n", .{});
+        for (slices) |*slice_item| {
+            const is_merged = try slice_item.isMerged(.{ .alloc = o.alloc, .into = target });
+            const status_text = if (is_merged) "✓ merged" else "✗ not merged";
+            log.debug("status:: slice {s} merge status: {}", .{ slice_item.name(), is_merged });
+            try stdout.print("  {s}: {s}\n", .{ slice_item.name(), status_text });
+        }
+    } else {
+        log.debug("status:: feature has no target", .{});
+        try stdout.print("\nFeature has no target\n", .{});
+
+        // Still print slice graph even without target
+        try stdout.print("\nSlice graph:\n", .{});
+        try Slice.printSliceGraph(stdout, slices);
+
+        try stdout.print("\nNote: Cannot check merge status without a target reference\n", .{});
+    }
+}
+
 pub fn submit(opts: struct {}) !void {
     _ = opts;
     std.debug.print("\n===sparse-submit===\n\n", .{});

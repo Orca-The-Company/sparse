@@ -98,7 +98,7 @@ pub const Slice = struct {
         for (leaves) |l| {
             var leaf_slice: ?*Slice = l;
             while (leaf_slice != null) : (leaf_slice = leaf_slice.?.target) {
-                try writer.writeAll(leaf_slice.?.ref.name());
+                try writer.writeAll(leaf_slice.?.name());
                 if (leaf_slice.?.target != null) {
                     try writer.writeAll(" ==> ");
                 } else {

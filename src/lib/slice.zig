@@ -95,24 +95,78 @@ pub const Slice = struct {
         );
         defer allocator.free(leaves);
 
-        for (leaves) |l| {
-            var leaf_slice: ?*Slice = l;
-            while (leaf_slice != null) : (leaf_slice = leaf_slice.?.target) {
-                try writer.writeAll(leaf_slice.?.name());
-                if (leaf_slice.?.target != null) {
-                    try writer.writeAll(" ==> ");
+        for (leaves, 0..) |l, leaf_index| {
+            var slice_chain = std.ArrayList(*Slice).init(allocator);
+            defer slice_chain.deinit();
+
+            // Build the chain from leaf to root
+            var current_slice: ?*Slice = l;
+            while (current_slice != null) {
+                try slice_chain.append(current_slice.?);
+                current_slice = current_slice.?.target;
+            }
+
+            // Print the chain from leaf to root (tip to base)
+            for (slice_chain.items, 0..) |slice, chain_index| {
+                const is_leaf = (chain_index == 0); // First item is the leaf (tip)
+                const is_root = (chain_index == slice_chain.items.len - 1); // Last item is the root
+
+                // Add tree structure indentation
+                if (leaf_index > 0 and chain_index == slice_chain.items.len - 1) {
+                    try writer.writeAll("│\n");
+                }
+
+                try writer.writeAll("│  ");
+
+                if (is_root) {
+                    try writer.writeAll("└─ ");
                 } else {
-                    const created_from = leaf_slice.?.ref.createdFrom(
-                        leaf_slice.?.repo,
-                    );
+                    try writer.writeAll("├─ ");
+                }
+
+                // Color and format slice names
+                if (is_leaf) {
+                    // Leaf slice (current working slice) - green
+                    try writer.writeAll("\x1b[1;32m🍃 ");
+                    try writer.writeAll(slice.name());
+                    try writer.writeAll("\x1b[0m");
+                } else if (is_root) {
+                    // Root slice - blue
+                    try writer.writeAll("\x1b[1;34m🌱 ");
+                    try writer.writeAll(slice.name());
+                    try writer.writeAll("\x1b[0m");
+                } else {
+                    // Intermediate slice - yellow
+                    try writer.writeAll("\x1b[1;33m🔸 ");
+                    try writer.writeAll(slice.name());
+                    try writer.writeAll("\x1b[0m");
+                }
+
+                // Add flow indicators
+                if (is_root) {
+                    // Show connection to external target
+                    const created_from = slice.ref.createdFrom(slice.repo);
                     if (created_from) |c| {
                         defer c.free();
-                        try writer.writeAll(" ==> ");
-                        try writer.writeAll(c.name());
+                        const clean_target_name = if (std.mem.startsWith(u8, c.name(), "refs/heads/"))
+                            c.name()["refs/heads/".len..]
+                        else
+                            c.name();
+                        try writer.writeAll(" \x1b[2m→\x1b[0m \x1b[1;36m");
+                        try writer.writeAll(clean_target_name);
+                        try writer.writeAll("\x1b[0m");
+                    }
+                } else {
+                    // Show connection to next slice in chain
+                    if (slice.target) |target_slice| {
+                        try writer.writeAll(" \x1b[2m↓\x1b[0m \x1b[2m");
+                        try writer.writeAll(target_slice.name());
+                        try writer.writeAll("\x1b[0m");
                     }
                 }
+
+                try writer.writeAll("\n");
             }
-            try writer.writeAll("\n");
         }
     }
 

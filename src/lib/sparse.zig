@@ -280,7 +280,8 @@ pub fn status(o: struct {
     const active_feature = try Feature.activeFeature(.{ .alloc = o.alloc });
 
     if (active_feature == null) {
-        try stdout.print("No active feature\n", .{});
+        try stdout.print("\n🚫 \x1b[33mNo active sparse feature detected\x1b[0m\n", .{});
+        try stdout.print("   Use `sparse feature <name>` to create or switch to a feature\n\n", .{});
         return;
     }
 
@@ -288,11 +289,14 @@ pub fn status(o: struct {
     defer current_feature.free(o.alloc);
 
     log.debug("status:: found active feature: {s}", .{current_feature.name});
-    try stdout.print("Active feature: {s}\n", .{current_feature.name});
+    try stdout.print("\n┌─ \x1b[1;36mSparse Feature Status\x1b[0m\n", .{});
+    try stdout.print("│\n", .{});
+    try stdout.print("├─ 🎯 \x1b[1;32mActive Feature:\x1b[0m \x1b[1m{s}\x1b[0m\n", .{current_feature.name});
 
     // Check if we have slices
     if (current_feature.slices == null) {
-        try stdout.print("Feature has no slices\n", .{});
+        try stdout.print("│\n", .{});
+        try stdout.print("└─ \x1b[33m⚠ Feature has no slices\x1b[0m\n\n", .{});
         return;
     }
 
@@ -303,18 +307,23 @@ pub fn status(o: struct {
     const orphan_count, const forked_count = try Slice.constructLinks(o.alloc, slices);
 
     log.debug("status:: slice analysis - orphan_count: {d}, forked_count: {d}", .{ orphan_count, forked_count });
-    try stdout.print("\nSlice analysis:\n", .{});
-    try stdout.print("  Orphan slices: {d} (ideal: 1)\n", .{orphan_count});
-    try stdout.print("  Forked slices: {d} (ideal: 0)\n", .{forked_count});
+    try stdout.print("│\n", .{});
+    try stdout.print("├─ 📊 \x1b[1;34mSlice Analysis:\x1b[0m\n", .{});
+
+    const orphan_status = if (orphan_count == 1) "\x1b[32m✓\x1b[0m" else "\x1b[33m⚠\x1b[0m";
+    const forked_status = if (forked_count == 0) "\x1b[32m✓\x1b[0m" else "\x1b[31m✗\x1b[0m";
+
+    try stdout.print("│  {s} Orphan slices: \x1b[1m{d}\x1b[0m \x1b[2m(ideal: 1)\x1b[0m\n", .{ orphan_status, orphan_count });
+    try stdout.print("│  {s} Forked slices: \x1b[1m{d}\x1b[0m \x1b[2m(ideal: 0)\x1b[0m\n", .{ forked_status, forked_count });
 
     // Warn if we don't have the ideal slice structure
     if (orphan_count != 1) {
         log.warn("status:: unexpected orphan slice count: {d}", .{orphan_count});
-        try stdout.print("  ⚠ Warning: Expected exactly 1 orphan slice, found {d}\n", .{orphan_count});
+        try stdout.print("│  \x1b[33m⚠ Warning:\x1b[0m Expected exactly 1 orphan slice, found \x1b[1m{d}\x1b[0m\n", .{orphan_count});
     }
     if (forked_count != 0) {
         log.warn("status:: unexpected forked slice count: {d}", .{forked_count});
-        try stdout.print("  ⚠ Warning: Expected 0 forked slices, found {d}\n", .{forked_count});
+        try stdout.print("│  \x1b[33m⚠ Warning:\x1b[0m Expected 0 forked slices, found \x1b[1m{d}\x1b[0m\n", .{forked_count});
     }
 
     // Get the target of the feature
@@ -322,30 +331,68 @@ pub fn status(o: struct {
     if (target_ref) |target| {
         defer target.free();
         log.debug("status:: feature target: {s}", .{target.name()});
-        try stdout.print("\nFeature target: {s}\n", .{target.name()});
+        try stdout.print("│\n", .{});
+        const clean_target_name = if (std.mem.startsWith(u8, target.name(), "refs/heads/"))
+            target.name()["refs/heads/".len..]
+        else
+            target.name();
+        try stdout.print("├─ 🎯 \x1b[1;35mTarget Branch:\x1b[0m \x1b[1m{s}\x1b[0m\n", .{clean_target_name});
 
         // Print slice graph showing the relationship between slices
-        try stdout.print("\nSlice graph:\n", .{});
+        try stdout.print("│\n", .{});
+        try stdout.print("├─ 🌳 \x1b[1;36mSlice Graph:\x1b[0m\n", .{});
+        try stdout.print("│\n", .{});
         try Slice.printSliceGraph(stdout, slices);
 
         // List merge status of each slice in the feature
-        try stdout.print("\nMerge status:\n", .{});
+        try stdout.print("│\n", .{});
+        try stdout.print("├─ 🔄 \x1b[1;34mMerge Status:\x1b[0m\n", .{});
         for (slices) |*slice_item| {
             const is_merged = try slice_item.isMerged(.{ .alloc = o.alloc, .into = target });
-            const status_text = if (is_merged) "✓ merged" else "✗ not merged";
+            const status_symbol = if (is_merged) "\x1b[32m✓\x1b[0m" else "\x1b[31m✗\x1b[0m";
+            const status_text = if (is_merged) "\x1b[32mmerged\x1b[0m" else "\x1b[31mnot merged\x1b[0m";
             log.debug("status:: slice {s} merge status: {}", .{ slice_item.name(), is_merged });
-            try stdout.print("  {s}: {s}\n", .{ slice_item.name(), status_text });
+            try stdout.print("│  {s} \x1b[1m{s}:\x1b[0m {s}\n", .{ status_symbol, slice_item.name(), status_text });
         }
+
+        // Add summary statistics
+        const total_slices = slices.len;
+        const merged_count = blk: {
+            var count: usize = 0;
+            for (slices) |*slice_item| {
+                const is_merged = slice_item.isMerged(.{ .alloc = o.alloc, .into = target }) catch false;
+                if (is_merged) count += 1;
+            }
+            break :blk count;
+        };
+
+        try stdout.print("│\n", .{});
+        try stdout.print("├─ 📈 \x1b[1;34mSummary:\x1b[0m\n", .{});
+        try stdout.print("│  📊 Total slices: \x1b[1m{d}\x1b[0m\n", .{total_slices});
+        try stdout.print("│  ✅ Merged: \x1b[1;32m{d}\x1b[0m / \x1b[1m{d}\x1b[0m\n", .{ merged_count, total_slices });
+        try stdout.print("│  🔄 Pending: \x1b[1;33m{d}\x1b[0m\n", .{total_slices - merged_count});
     } else {
         log.debug("status:: feature has no target", .{});
-        try stdout.print("\nFeature has no target\n", .{});
+        try stdout.print("│\n", .{});
+        try stdout.print("├─ \x1b[33m⚠ Feature has no target branch\x1b[0m\n", .{});
 
         // Still print slice graph even without target
-        try stdout.print("\nSlice graph:\n", .{});
+        try stdout.print("│\n", .{});
+        try stdout.print("├─ 🌳 \x1b[1;36mSlice Graph:\x1b[0m\n", .{});
+        try stdout.print("│\n", .{});
         try Slice.printSliceGraph(stdout, slices);
 
-        try stdout.print("\nNote: Cannot check merge status without a target reference\n", .{});
+        try stdout.print("│\n", .{});
+        try stdout.print("├─ 📈 \x1b[1;34mSummary:\x1b[0m\n", .{});
+        try stdout.print("│  📊 Total slices: \x1b[1m{d}\x1b[0m\n", .{slices.len});
+        try stdout.print("│\n", .{});
+        try stdout.print("└─ \x1b[2mℹ Note: Cannot check merge status without a target reference\x1b[0m\n\n", .{});
+        return;
     }
+
+    // Close the status box
+    try stdout.print("│\n", .{});
+    try stdout.print("└─ \x1b[2m✨ Status complete\x1b[0m\n\n", .{});
 }
 
 pub fn submit(opts: struct {}) !void {

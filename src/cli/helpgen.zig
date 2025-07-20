@@ -15,6 +15,7 @@ fn genCommands(alloc: std.mem.Allocator, writer: anytype) !void {
     try extractFileIntoHelp(alloc, writer, "feature_command.zig", "sparse_feature");
     try extractFileIntoHelp(alloc, writer, "slice_command.zig", "sparse_slice");
     try extractFileIntoHelp(alloc, writer, "update_command.zig", "sparse_update");
+    try extractFileIntoHelp(alloc, writer, "status_command.zig", "sparse_status");
 }
 
 fn extractFileIntoHelp(alloc: Allocator, writer: anytype, comptime zig_file: []const u8, comptime const_name: []const u8) !void {

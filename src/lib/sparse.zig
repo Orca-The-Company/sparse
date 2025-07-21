@@ -216,12 +216,6 @@ pub fn update(o: struct {
             if (current_feature) |*f| f.free(o.alloc);
         }
 
-        {
-            const rr_fetch = try Git.fetch(.{ .allocator = o.alloc, .args = &.{} });
-            defer o.alloc.free(rr_fetch.stderr);
-            defer o.alloc.free(rr_fetch.stdout);
-        }
-
         if (current_feature) |*cf| {
             // clean up the state
             try updateGoodWeather(.{ .alloc = o.alloc, .feature = cf, .state = &state });

@@ -330,6 +330,8 @@ pub fn status(o: struct {
     const target_ref = try current_feature.target(o.alloc);
     if (target_ref) |target| {
         defer target.free();
+        try fetchTarget(.{ .alloc = o.alloc, .target = target });
+
         log.debug("status:: feature target: {s}", .{target.name()});
         try stdout.print("│\n", .{});
         const clean_target_name = if (std.mem.startsWith(u8, target.name(), "refs/heads/"))
@@ -480,6 +482,25 @@ fn reparent(o: struct {
     }
 }
 
+fn fetchTarget(o: struct {
+    alloc: std.mem.Allocator,
+    target: GitReference,
+}) !void {
+    const target_branch = try o.target.branchName();
+    const target_branch_refspec = try std.fmt.allocPrint(o.alloc, "{s}:{s}", .{ target_branch, target_branch });
+    defer o.alloc.free(target_branch_refspec);
+    const rr_fetch = try Git.fetch(.{
+        .allocator = o.alloc,
+        .args = &.{
+            // TODO: get the remote from config
+            "origin",
+            target_branch_refspec,
+        },
+    });
+    defer o.alloc.free(rr_fetch.stderr);
+    defer o.alloc.free(rr_fetch.stdout);
+}
+
 fn updateGoodWeather(o: struct {
     alloc: std.mem.Allocator,
     feature: *Feature,
@@ -487,21 +508,7 @@ fn updateGoodWeather(o: struct {
 }) !void {
     const target = try o.feature.target(o.alloc);
     o.state.free(o.alloc);
-    {
-        const target_branch = try target.?.branchName();
-        const target_branch_refspec = try std.fmt.allocPrint(o.alloc, "{s}:{s}", .{ target_branch, target_branch });
-        defer o.alloc.free(target_branch_refspec);
-        const rr_fetch = try Git.fetch(.{
-            .allocator = o.alloc,
-            .args = &.{
-                // TODO: get the remote from config
-                "origin",
-                target_branch_refspec,
-            },
-        });
-        defer o.alloc.free(rr_fetch.stderr);
-        defer o.alloc.free(rr_fetch.stdout);
-    }
+    try fetchTarget(.{ .alloc = o.alloc, .target = target.? });
     o.state._data.feature = try o.alloc.dupe(u8, o.feature.name);
     o.state._data.target = if (target) |t| try o.alloc.dupe(u8, t.name()) else null;
     o.state._data.last_operation = .Analyze;

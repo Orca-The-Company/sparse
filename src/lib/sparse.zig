@@ -550,42 +550,17 @@ fn updateGoodWeather(o: struct {
     }
     if (last_unmerged) |lu| {
         log.debug("update:: last_unmerged:{s}", .{lu.ref.name()});
-        // re-parent last_unmerged to target
-        // rebase all slices from tip to target
-        // git rebase --onto <new-parent> <old-parent> <branch-to-move>
-        const old_parent = res: {
-            if (lu.ref.createdFrom(lu.repo)) |op_ref| {
-                break :res op_ref.name();
-            } else {
-                if (target) |t| {
-                    break :res t.name();
-                } else {
-                    // TODO: Handle the case when target is null
-                    // At least fall back to default target for sparse in
-                    // git config, maybe something like `sparse.default.target`
-                    break :res "main";
-                }
-            }
-        };
-        log.debug("update:: old_parent:{s}", .{old_parent});
-
         // save state of the sparse update we need this information
         // in case there is a conflict or error during the rebase process
         // so that we can resume the update from where it left off
         o.state._data.last_operation = .Reparent;
         o.state._data.last_unmerged_slice = try o.alloc.dupe(u8, lu.ref.name());
-        o.state._data.old_parent = try o.alloc.dupe(u8, old_parent);
         try o.state.save();
 
-        try reparent(.{
-            .alloc = o.alloc,
-            .tip_slice = leaves[0],
-            .old_parent = old_parent,
-            .new_parent = upstream,
-            .branch_to_move = lu.ref,
-        });
-        //try jump(.{ .allocator = o.alloc, .to = o.feature });
-        try updateRefs(.{ .alloc = o.alloc, .target_ref = lu.ref });
+        // jump to tip
+        try jump(.{ .allocator = o.alloc, .to = o.feature });
+        try updateRefs(.{ .alloc = o.alloc, .target_ref = target.? });
+
         // push all unmerged slices in remotes
         ss = leaves[0];
         while (ss != null) : (ss = ss.?.target) {
@@ -643,18 +618,6 @@ fn handleUpdateInProgress(alloc: std.mem.Allocator, state: *State.Update) !void 
         .Reparent => {
             log.debug("update:: failed when reparent command is called before", .{});
             if (feature_updated) |*f| {
-                var lu: ?Slice = null;
-                for (f.slices.?.items) |s| {
-                    if (std.mem.eql(
-                        u8,
-                        s.ref.name(),
-                        state._data.last_unmerged_slice.?,
-                    )) {
-                        lu = s;
-                    }
-                }
-                try jump(.{ .allocator = alloc, .to = f });
-                try updateRefs(.{ .alloc = alloc, .target_ref = lu.?.ref });
                 const leaves = try Slice.leafNodes(.{
                     .alloc = alloc,
                     .slice_pool = f.slices.?.items,
@@ -663,6 +626,7 @@ fn handleUpdateInProgress(alloc: std.mem.Allocator, state: *State.Update) !void 
                 var ss: ?*Slice = leaves[0];
                 var target = try GitReference.lookup(ss.?.repo, state._data.target.?);
                 defer target.free();
+
                 const upstream = try target.upstream(ss.?.repo);
                 defer upstream.free();
                 while (ss != null) : (ss = ss.?.target) {

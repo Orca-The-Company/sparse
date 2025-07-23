@@ -10,6 +10,7 @@ pub const Error = error{
     REPARENTING_FAILED,
     UPDATE_REFS_FAILED,
     REBASE_IN_PROGRESS,
+    NO_UPDATE_IN_PROGRESS,
     UNABLE_TO_DETECT_CURRENT_FEATURE,
     RECOVERABLE_ORPHAN_SLICES_IN_FEATURE,
     RECOVERABLE_FORKED_SLICES_IN_FEATURE,
@@ -206,9 +207,12 @@ pub fn update(o: struct {
     const is_rebase_in_progress = try Git.isRebaseInProgress(o.alloc, repo);
     if (is_rebase_in_progress) {
         log.err("update:: rebase in progress", .{});
-        // TODO: print an informative message about the rebase in progress and
-        // suggest user to fix the conflicts and run `git rebase --continue`
-        // once it is done run `sparse update --continue`
+        const stdout = std.io.getStdOut().writer();
+        try stdout.print("⚠️  A rebase is currently in progress.\n", .{});
+        try stdout.print("Please resolve any conflicts and run:\n", .{});
+        try stdout.print("  git rebase --continue\n", .{});
+        try stdout.print("Then run:\n", .{});
+        try stdout.print("  sparse update --continue\n", .{});
         return Error.REBASE_IN_PROGRESS;
     } else {
         var current_feature = try Feature.activeFeature(.{ .alloc = o.alloc });
@@ -222,13 +226,17 @@ pub fn update(o: struct {
         } else {
             if (!o.@"continue") {
                 log.err("update:: not able to detect current branch", .{});
+                const stdout = std.io.getStdOut().writer();
+                try stdout.print("❌ Unable to detect current sparse feature.\n", .{});
+                try stdout.print("Make sure you're on a sparse feature branch before running update.\n", .{});
                 return Error.UNABLE_TO_DETECT_CURRENT_FEATURE;
             }
             if (!state.inProgress()) {
-                // TODO: return error indicating that there is no update in progress
-                // so we cannot continue
                 try state.delete();
-                return Error.UNABLE_TO_DETECT_CURRENT_FEATURE;
+                const stdout = std.io.getStdOut().writer();
+                try stdout.print("❌ No update in progress to continue.\n", .{});
+                try stdout.print("Run 'sparse update' without --continue to start a new update.\n", .{});
+                return Error.NO_UPDATE_IN_PROGRESS;
             }
             log.err("update:: already in progress", .{});
             try handleUpdateInProgress(o.alloc, &state);
@@ -508,6 +516,11 @@ fn updateGoodWeather(o: struct {
 }) !void {
     const target = try o.feature.target(o.alloc);
     o.state.free(o.alloc);
+
+    // Print update information
+    const stdout = std.io.getStdOut().writer();
+    try stdout.print("Updating feature '{s}' from target '{s}'\n", .{ o.feature.name, target.?.name() });
+
     try fetchTarget(.{ .alloc = o.alloc, .target = target.? });
     o.state._data.feature = try o.alloc.dupe(u8, o.feature.name);
     o.state._data.target = if (target) |t| try o.alloc.dupe(u8, t.name()) else null;
@@ -550,6 +563,36 @@ fn updateGoodWeather(o: struct {
     }
     if (last_unmerged) |lu| {
         log.debug("update:: last_unmerged:{s}", .{lu.ref.name()});
+
+        // Show what commits will be updated
+        try stdout.print("Found unmerged changes. Showing commits to be updated:\n\n", .{});
+
+        // Get the range of commits to show: upstream..tip_of_feature
+        const tip_slice_name = leaves[0].ref.name();
+        const upstream_name = upstream.name();
+
+        // Build the git log command to show commits
+        const log_range = try std.fmt.allocPrint(o.alloc, "{s}..{s}", .{ upstream_name, tip_slice_name });
+        defer o.alloc.free(log_range);
+
+        const log_result = Git.log(.{
+            .allocator = o.alloc,
+            .args = &.{ "--oneline", "--decorate", "--graph", log_range },
+        }) catch |err| {
+            try stdout.print("Unable to show commit log: {}\n", .{err});
+            return err;
+        };
+        defer o.alloc.free(log_result.stdout);
+        defer o.alloc.free(log_result.stderr);
+
+        if (log_result.stdout.len > 0) {
+            try stdout.print("{s}\n", .{log_result.stdout});
+        } else {
+            try stdout.print("No commits to show in range {s}\n\n", .{log_range});
+        }
+
+        try stdout.print("Rebasing unmerged slices onto updated target...\n", .{});
+
         // save state of the sparse update we need this information
         // in case there is a conflict or error during the rebase process
         // so that we can resume the update from where it left off
@@ -576,6 +619,9 @@ fn updateGoodWeather(o: struct {
         try jump(.{ .allocator = o.alloc, .to = o.feature });
         try o.state.delete();
 
+        // Show success message
+        try stdout.print("✓ Successfully updated feature '{s}' - all slices rebased and pushed\n", .{o.feature.name});
+
         // TODO: cleanup merged slices, loop forward since last_unmerged
         // is the last unmerged slice
         // var current = lu;
@@ -589,11 +635,15 @@ fn updateGoodWeather(o: struct {
         // }
     } else {
         log.debug("update:: no unmerged slices", .{});
+        try stdout.print("✓ Feature '{s}' is already up to date - no changes needed\n", .{o.feature.name});
         try o.state.delete();
     }
 }
 
 fn handleUpdateInProgress(alloc: std.mem.Allocator, state: *State.Update) !void {
+    const stdout = std.io.getStdOut().writer();
+    try stdout.print("🔄 Continuing update for feature '{s}'...\n", .{state._data.feature.?});
+
     var feature_updated = try Feature.findFeatureByName(.{
         .alloc = alloc,
         .feature_name = state._data.feature.?,
@@ -604,6 +654,7 @@ fn handleUpdateInProgress(alloc: std.mem.Allocator, state: *State.Update) !void 
     switch (state._data.last_operation) {
         .Create, .Analyze => {
             log.debug("update:: failed when create or analyze command is called before, retrying..", .{});
+            try stdout.print("Retrying analysis and update...\n", .{});
             if (feature_updated) |*f| {
                 try jump(.{
                     .allocator = alloc,
@@ -611,12 +662,14 @@ fn handleUpdateInProgress(alloc: std.mem.Allocator, state: *State.Update) !void 
                 });
                 try updateGoodWeather(.{ .alloc = alloc, .feature = f, .state = state });
             } else {
+                try stdout.print("❌ Unable to find feature to continue update\n", .{});
                 return Error.UNABLE_TO_DETECT_CURRENT_FEATURE;
             }
             return Error.UNABLE_TO_DETECT_CURRENT_FEATURE;
         },
         .Reparent => {
             log.debug("update:: failed when reparent command is called before", .{});
+            try stdout.print("Continuing to push remaining unmerged slices...\n", .{});
             if (feature_updated) |*f| {
                 const leaves = try Slice.leafNodes(.{
                     .alloc = alloc,
@@ -641,10 +694,14 @@ fn handleUpdateInProgress(alloc: std.mem.Allocator, state: *State.Update) !void 
                 }
                 try jump(.{ .allocator = alloc, .to = f });
                 try state.delete();
+                try stdout.print("✓ Successfully completed update for feature '{s}'\n", .{f.name});
+            } else {
+                try stdout.print("❌ Unable to find feature to continue update\n", .{});
             }
         },
         .Complete => {
             log.debug("update:: failed when complete command is called before, no need to continue updating", .{});
+            try stdout.print("✓ Update already completed - nothing to continue\n", .{});
             try state.delete();
         },
     }

@@ -63,6 +63,77 @@ zig build
 
 The binary will be available at `zig-out/bin/sparse`.
 
+## ⚙️ Configuration
+
+Sparse uses Git configuration variables to identify users and create properly namespaced branches. Before using sparse, you need to configure your user identification.
+
+### Required Configuration
+
+#### User Identification
+Sparse needs to identify you to create unique branch names. It uses a hierarchical configuration approach:
+
+1. **Primary**: `sparse.user.id` (recommended)
+2. **Fallback**: `user.email` (standard Git config)
+
+```bash
+# Recommended: Set a sparse-specific user ID
+git config sparse.user.id "jane.doe"
+
+# Alternative: Ensure your Git email is set (usually already configured)
+git config user.email "jane.doe@company.com"
+```
+
+### Configuration Details
+
+| Config Variable | Purpose | Example | Required |
+|----------------|---------|---------|----------|
+| `sparse.user.id` | Primary user identifier for branch naming | `jane.doe` | ✅ Recommended |
+| `user.email` | Fallback identifier if sparse.user.id not set | `jane.doe@company.com` | ⚠️ Fallback |
+
+### Branch Naming
+The user identifier becomes part of your branch structure:
+```
+sparse/<user-id>/<feature-name>/slice/<slice-name>
+```
+
+**Examples:**
+```bash
+# With sparse.user.id = "jane.doe"
+sparse/jane.doe/auth-system/slice/database
+sparse/jane.doe/auth-system/slice/api
+
+# With user.email = "jane.doe@company.com"
+sparse/jane.doe@company.com/auth-system/slice/database
+sparse/jane.doe@company.com/auth-system/slice/api
+```
+
+### ⚠️ Important Notes
+
+1. **Valid Branch Names**: The identifier must be a valid Git branch name (no spaces, special characters limited)
+2. **Team Consistency**: Teams should agree on a naming convention (e.g., use email vs. username)
+3. **Repository Scope**: Configuration can be set globally or per-repository:
+
+```bash
+# Global configuration (affects all repositories)
+git config --global sparse.user.id "jane.doe"
+
+# Repository-specific configuration
+git config sparse.user.id "jane.doe"
+```
+
+### Verification
+Check your configuration:
+```bash
+# Check sparse-specific config
+git config sparse.user.id
+
+# Check fallback email config
+git config user.email
+
+# View all sparse-related config
+git config --get-regexp sparse
+```
+
 ## 🎯 Quick Start
 
 ### 1. Create Your First Feature
@@ -335,12 +406,12 @@ sequenceDiagram
 Sparse uses a consistent naming convention:
 
 ```
-sparse/<user.email>/<feature-name>/<slice-name>
+sparse/<user.email>/<feature-name>/slice/<slice-name>
 ```
 
 **Example:**
 ```
-sparse/jane.doe@company.com/user-dashboard/
+sparse/jane.doe@company.com/user-dashboard/slice/
 ├── database          # Database schema changes
 ├── api               # Backend API endpoints
 ├── frontend          # UI components

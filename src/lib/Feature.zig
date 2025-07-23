@@ -201,10 +201,12 @@ pub fn activate(self: *Feature, o: struct {
                 );
             } else {
                 if (slice_array.items.len > 0) {
+                    const leaves = try Slice.leafNodes(.{ .alloc = o.allocator, .slice_pool = slice_array.items });
+                    defer o.allocator.free(leaves);
                     slice_name = try std.fmt.allocPrint(
                         o.allocator,
                         "{s}",
-                        .{slice_array.getLast().ref.name()},
+                        .{leaves[0].ref.name()},
                     );
                 } else {
                     slice_name = try std.fmt.allocPrint(o.allocator, "{s}/slice/1", .{self.ref_name});

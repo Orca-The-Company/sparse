@@ -249,6 +249,19 @@ pub fn activate(self: *Feature, o: struct {
     defer o.allocator.free(rr.stderr);
 
     log.debug("switch result: stdout:{s} stderr:{s}", .{ rr.stdout, rr.stderr });
+
+    // TODO: Add git notes to preserve slice parent relationship for rebasing/squashing scenarios
+    // When creating a new slice (o.create == true), add a git note to the HEAD commit that records
+    // the parent slice relationship. This will survive rebasing/squashing unlike reflog.
+    // Example: git notes add -m "slice-parent: <parent_branch_name>" HEAD
+    // This should be done after successful branch creation but before returning.
+    if (o.create) {
+        // TODO: Implement git notes creation using libgit2 or system Git wrapper
+        // - Add note with format: "slice-parent: <parent_branch_name>"
+        // - Parent should be o.start_point if provided, or "main" if not
+        // - Use libgit2 git_note_create() or add to system/Git.zig wrapper
+        // - Handle errors gracefully (notes are enhancement, not critical)
+    }
 }
 
 fn asFeatureRefName(alloc: Allocator, name: []const u8) ![]const u8 {

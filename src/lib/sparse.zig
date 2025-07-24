@@ -14,6 +14,15 @@ pub const Error = error{
     UNABLE_TO_DETECT_CURRENT_FEATURE,
     RECOVERABLE_ORPHAN_SLICES_IN_FEATURE,
     RECOVERABLE_FORKED_SLICES_IN_FEATURE,
+    // TODO: Add error types for git notes operations to preserve slice relationships
+    // These errors should handle failures in git notes operations without breaking core functionality:
+    // NOTES_CREATE_FAILED,          // Failed to create git note for slice parent relationship
+    // NOTES_READ_FAILED,            // Failed to read git note for slice parent information
+    // NOTES_PUSH_FAILED,            // Failed to push git notes to remote repository
+    // NOTES_FETCH_FAILED,           // Failed to fetch git notes from remote repository
+    // NOTES_PARSE_FAILED,           // Failed to parse slice parent information from git note
+    // NOTES_SYNC_CONFLICT,          // Conflict between local and remote git notes
+    // NOTES_RELATIONSHIP_MISMATCH,  // Mismatch between reflog and notes-based relationships
 };
 
 pub fn feature(
@@ -127,6 +136,9 @@ pub fn feature(
 }
 
 pub fn slice(o: struct { slice_name: ?[]const u8 }) !void {
+    // TODO: Add git notes support when creating new slices
+    // When a new slice is created, automatically add a git note to preserve the parent relationship
+    // This will ensure slice relationships survive rebasing/squashing operations
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer std.debug.assert(gpa.deinit() == .ok);
     const allocator = gpa.allocator();
@@ -196,6 +208,9 @@ pub fn update(o: struct {
     alloc: std.mem.Allocator,
     @"continue": bool = false,
 }) !void {
+    // TODO: Consider preserving git notes during update operations
+    // If update involves rebasing/squashing, ensure slice parent notes are preserved
+    // and updated to reflect new commit IDs after the update
     try LibGit.init();
     defer LibGit.shutdown() catch @panic("Oops: couldn't shutdown libgit2, something weird is cooking...");
     const repo = try LibGit.GitRepository.open();
@@ -278,6 +293,13 @@ pub fn update(o: struct {
 pub fn status(o: struct {
     alloc: std.mem.Allocator,
 }) !void {
+    // TODO: Enhance status command to show slice relationships from git notes
+    // Current implementation relies on reflog which is unreliable after rebasing/squashing.
+    // Should display:
+    // 1. Current slice and its parent (from git notes if available)
+    // 2. Full dependency chain using notes-based analysis
+    // 3. Warning if reflog and notes show different relationships
+    // 4. Instructions for pushing/fetching notes for team collaboration
     try LibGit.init();
     defer LibGit.shutdown() catch @panic("Oops: couldn't shutdown libgit2, something weird is cooking...");
 
@@ -709,6 +731,9 @@ fn jump(o: struct {
     slice: []const u8 = constants.LAST_SLICE_NAME_POINTER,
     start_point: ?[]const u8 = null,
 }) !void {
+    // TODO: When creating new slices (o.create == true), add git notes to preserve relationships
+    // After successful slice creation, add note: "slice-parent: <start_point_or_main>"
+    // This ensures slice relationships are preserved even after rebasing/squashing
     log.debug(
         "jump:: from:{s} to.name:{s} to.ref_name:{s} slice:{s} start_point:{s} create:{any}",
         .{

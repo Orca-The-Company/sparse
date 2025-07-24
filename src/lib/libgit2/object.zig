@@ -30,7 +30,7 @@ pub const GitObject = struct {
     /// passed to let the method guess the object's type.
     //
     pub fn lookup(repo: GitRepository, lookup_id: GitOID, object_type: GitObjectType) !GitObject {
-        var object = .{};
+        var object = GitObject{};
 
         const res: c_int = c.git_object_lookup(&object.value, repo.value, lookup_id.value, @intFromEnum(object_type));
         if (res != 0) {

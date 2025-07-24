@@ -23,6 +23,7 @@ pub const GitWorktreeAddOptions = struct {
             }
             return add_options;
         }
+
         return GitError.UNEXPECTED_ERROR;
     }
 };
@@ -70,7 +71,6 @@ pub const GitWorktree = struct {
         );
 
         if (res != 0) {
-            @import("std").debug.print("addWithOptions: res: {any}\n", .{res});
             return GitError.UNEXPECTED_ERROR;
         }
 
@@ -94,7 +94,6 @@ pub const GitWorktree = struct {
         );
 
         if (res != 0) {
-            @import("std").debug.print("addWithOptions: res: {any}\n", .{res});
             return GitError.UNEXPECTED_ERROR;
         }
 
@@ -129,9 +128,9 @@ pub const GitWorktree = struct {
     }
 };
 
-const GitString = @import("types.zig").GitString;
-const cStringToGitString = @import("types.zig").cStringToGitString;
-const GitStrArray = @import("types.zig").GitStrArray;
+const GitError = @import("error.zig").GitError;
 const GitRepository = @import("repository.zig").GitRepository;
 const GitReference = @import("reference.zig").GitReference;
-const GitError = @import("error.zig").GitError;
+const GitString = @import("types.zig").GitString;
+const GitStrArray = @import("types.zig").GitStrArray;
+const cStringToGitString = @import("types.zig").cStringToGitString;

@@ -2,6 +2,15 @@ const std = @import("std");
 const logger = @import("std").log.scoped(.Git);
 const RunResult = std.process.Child.RunResult;
 
+// TODO: Add git notes functionality to preserve slice relationships across rebases
+// This should include wrapper functions for:
+// - git notes add -m "slice-parent: <parent>" <commit>
+// - git notes show <commit>
+// - git notes list
+// - git push origin refs/notes/commits
+// - git fetch origin "refs/notes/*:refs/notes/*"
+// These commands will allow preserving slice parent relationships even after rebasing/squashing
+
 pub const Ref = struct {
     objectname: []const u8,
     refname: []const u8,
@@ -383,6 +392,64 @@ pub fn fetch(o: struct {
         .argv = argv,
     });
 }
+
+// TODO: Add git notes wrapper functions to preserve slice relationships across rebases
+// These functions will provide system git command wrappers for notes operations:
+
+// TODO: Implement git notes add wrapper
+// pub fn @"notes-add"(o: struct {
+//     allocator: std.mem.Allocator,
+//     message: []const u8,
+//     commit: []const u8,
+//     force: bool = false,
+// }) !RunResult {
+//     // git notes add -m "<message>" [--force] <commit>
+//     // Used to create slice parent relationship notes
+// }
+
+// TODO: Implement git notes show wrapper
+// pub fn @"notes-show"(o: struct {
+//     allocator: std.mem.Allocator,
+//     commit: []const u8,
+// }) !RunResult {
+//     // git notes show <commit>
+//     // Used to read slice parent relationship information
+// }
+
+// TODO: Implement git notes list wrapper
+// pub fn @"notes-list"(o: struct {
+//     allocator: std.mem.Allocator,
+// }) !RunResult {
+//     // git notes list
+//     // Used to get all commits that have notes
+// }
+
+// TODO: Implement git notes push wrapper
+// pub fn @"notes-push"(o: struct {
+//     allocator: std.mem.Allocator,
+//     remote: []const u8 = "origin",
+// }) !RunResult {
+//     // git push <remote> refs/notes/commits
+//     // Used to share slice relationship notes with team
+// }
+
+// TODO: Implement git notes fetch wrapper
+// pub fn @"notes-fetch"(o: struct {
+//     allocator: std.mem.Allocator,
+//     remote: []const u8 = "origin",
+// }) !RunResult {
+//     // git fetch <remote> "refs/notes/*:refs/notes/*"
+//     // Used to sync slice relationship notes from remote
+// }
+
+// TODO: Implement git notes remove wrapper
+// pub fn @"notes-remove"(o: struct {
+//     allocator: std.mem.Allocator,
+//     commit: []const u8,
+// }) !RunResult {
+//     // git notes remove <commit>
+//     // Used to clean up slice relationship notes when needed
+// }
 
 const constants = @import("../constants.zig");
 const utils = @import("../utils.zig");

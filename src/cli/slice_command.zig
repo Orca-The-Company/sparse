@@ -28,6 +28,10 @@ const Params = struct {
 ///
 /// sparse slice [ options ] [<slice_name>]
 ///
+/// TODO: Consider adding CLI flags for git notes functionality:
+/// --with-notes: Explicitly create git notes for slice relationships (default behavior)
+/// --no-notes: Skip git notes creation for slice relationships
+///
 pub const SliceCommand = struct {
     pub fn run(self: SliceCommand, alloc: Allocator) !u8 {
         _ = self;

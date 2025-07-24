@@ -1,7 +1,11 @@
 const std = @import("std");
 const Allocator = @import("std").mem.Allocator;
-const log = @import("std").log.scoped(.feature_command);
+const log = @import("std").log.scoped(.update_command);
 const help_strings = @import("help_strings");
+
+// TODO: Add git notes support for update operations to preserve slice relationships
+// Update operations may involve rebasing/squashing which can break reflog-based relationships
+// Should ensure git notes are preserved and updated during slice updates
 
 /// sparse update [ options ] [<slice_name>]
 ///

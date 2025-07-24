@@ -30,7 +30,16 @@ pub const Slice = struct {
         var forked_count: usize = 0;
 
         // TODO: investigate better ways to construct links between given slices
+        // Current implementation uses reflog via createdFrom() which fails after rebasing/squashing.
+        // Should be enhanced to:
+        // 1. First try reading slice parent relationships from git notes
+        // 2. Fall back to reflog analysis if notes are not available
+        // 3. Provide a hybrid approach that combines both methods for accuracy
         for (slices) |*s| {
+            // TODO: Replace this reflog-based approach with git notes reading
+            // Current createdFrom() uses reflog which is unreliable after rebasing/squashing
+            // Should implement: s.getParentFromNotes() that reads "slice-parent: <parent>" notes
+            // and falls back to createdFrom() if notes are not available
             const created_from = s.ref.createdFrom(s.repo);
             if (created_from) |c| {
                 defer c.free();
@@ -203,6 +212,9 @@ pub const Slice = struct {
         alloc: Allocator,
         in_feature: ?[]const u8 = null,
     }) ![]Slice {
+        // TODO: Consider enhancing this function to also populate slice parent relationships
+        // from git notes during slice creation, rather than doing it later in constructLinks()
+        // This could improve performance and reliability of relationship detection
         log.debug("getAllSlicesWith::", .{});
         const repo = try GitRepository.open();
         defer repo.free();
@@ -247,6 +259,19 @@ pub const Slice = struct {
 
         return try slices.toOwnedSlice(o.alloc);
     }
+
+    // TODO: Add function to read slice parent from git notes
+    // pub fn getParentFromNotes(self: *Slice, alloc: Allocator) !?[]const u8 {
+    //     // Read git note with format "slice-parent: <parent_branch_name>"
+    //     // Return parent branch name or null if no note exists
+    //     // Use libgit2 git_note_read() or system Git wrapper
+    // }
+
+    // TODO: Add function to set slice parent in git notes
+    // pub fn setParentInNotes(self: *Slice, alloc: Allocator, parent: []const u8) !void {
+    //     // Create git note with format "slice-parent: <parent_branch_name>"
+    //     // Use libgit2 git_note_create() or system Git wrapper
+    // }
 
     pub fn isMerged(self: *Slice, o: struct { alloc: Allocator, into: GitReference }) !bool {
         log.debug("isMerged:: self.name:{s}", .{self.ref.name()});

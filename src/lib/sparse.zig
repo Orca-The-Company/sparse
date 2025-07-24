@@ -405,12 +405,6 @@ pub fn status(o: struct {
     try stdout.print("└─ \x1b[2m✨ Status complete\x1b[0m\n\n", .{});
 }
 
-pub fn submit(opts: struct {}) !void {
-    _ = opts;
-    std.debug.print("\n===sparse-submit===\n\n", .{});
-    std.debug.print("\n====================\n", .{});
-}
-
 fn updateRefs(o: struct {
     alloc: std.mem.Allocator,
     target_ref: GitReference,

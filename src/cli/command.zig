@@ -1,11 +1,7 @@
 const std = @import("std");
 const log = std.log.scoped(.command);
-const debug = std.debug.print;
-const Allocator = std.mem.Allocator;
 
-pub const CString = [*:0]const u8;
-pub const ArgString = [:0]u8;
-pub const StringSentinel = [:0]const u8;
+const Allocator = std.mem.Allocator;
 
 pub const Error = error{
     // More than 1 command detected only one command in one run is supported
@@ -16,12 +12,6 @@ pub const Error = error{
     UnexpectedArgument,
     UnknownOption,
     OptionHandledAlready,
-};
-
-pub const ArgType = enum {
-    Boolean,
-    NonBoolean,
-    Unsupported,
 };
 
 pub const Command = union(enum) {

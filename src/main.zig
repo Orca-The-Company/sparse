@@ -12,4 +12,3 @@ test {
 }
 
 const cli = @import("cli.zig");
-const lib = @import("sparse_lib");

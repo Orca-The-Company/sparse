@@ -29,7 +29,8 @@ pub const GitRevSpec = struct {
     }
 
     // TODO: git_revparse_single
-
+    ///
+    /// Get the left hand side of a range.
     ///
     /// The left element of the revspec; must be freed by the user
     /// Call `GitRevSpec.free` to free the objects
@@ -37,15 +38,14 @@ pub const GitRevSpec = struct {
     pub fn from(self: GitRevSpec) ?GitObject {
         if (self.value) |val| {
             if (val.from) |val_from| {
-                const object: GitObject = .{
-                    .value = val_from,
-                };
-                return object;
+                return GitObject{ .value = val_from };
             }
         }
         return null;
     }
 
+    ///
+    /// Get the right hand side of a range.
     ///
     /// The right element of the revspec; must be freed by the user
     /// Call `GitRevSpec.free` to free the objects
@@ -53,10 +53,7 @@ pub const GitRevSpec = struct {
     pub fn to(self: GitRevSpec) ?GitObject {
         if (self.value) |val| {
             if (val.to) |val_to| {
-                const object: GitObject = .{
-                    .value = val_to,
-                };
-                return object;
+                return GitObject{ .value = val_to };
             }
         }
         return null;

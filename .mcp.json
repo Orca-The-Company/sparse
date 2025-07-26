@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "context7": {
+      "type": "http",
+      "url": "https://mcp.context7.com/mcp"
+    },
+    "semgrep": {
+      "type": "http",
+      "url": "https://mcp.semgrep.ai/mcp"
+    }
+  }
+}

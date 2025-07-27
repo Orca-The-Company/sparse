@@ -387,6 +387,11 @@ pub fn status(o: struct {
             try stdout.print("│  {s} \x1b[1m{s}:\x1b[0m {s}\n", .{ status_symbol, slice_item.name(), status_text });
         }
 
+        // Display git notes information
+        try stdout.print("│\n", .{});
+        try stdout.print("├─ 📝 \x1b[1;36mGit Notes Status:\x1b[0m\n", .{});
+        try displayGitNotesInfo(o.alloc, stdout, slices);
+
         // Add summary statistics
         const total_slices = slices.len;
         const merged_count = blk: {
@@ -780,6 +785,58 @@ fn jump(o: struct {
         .slice_name = o.slice,
         .start_point = result_start_point,
     });
+}
+
+// Helper function to display git notes information for slices
+fn displayGitNotesInfo(alloc: std.mem.Allocator, writer: anytype, slices: []Slice) !void {
+
+    // Track if any notes were found
+    var notes_found = false;
+    var notes_with_parents: usize = 0;
+    var notes_without_parents: usize = 0;
+
+    // Check each slice for git notes
+    for (slices) |slice_item| {
+        // Get the commit ID for this slice
+        const slice_ref = slice_item.ref;
+        const maybe_commit_oid = slice_ref.target();
+
+        if (maybe_commit_oid == null) continue;
+
+        // Try to read the note for this slice using Slice method
+        if (slice_item.getParentFromNotes(alloc)) |maybe_parent_info| {
+            if (maybe_parent_info) |parent_info| {
+                defer alloc.free(parent_info);
+                notes_found = true;
+                notes_with_parents += 1;
+                
+                const slice_name = slice_item.name();
+                try writer.print("│  📝 \x1b[1m{s}:\x1b[0m parent → \x1b[32m{s}\x1b[0m\n", .{ slice_name, parent_info });
+            } else {
+                // No note exists for this slice
+                notes_without_parents += 1;
+            }
+        } else |_| {
+            // Failed to read note
+            notes_without_parents += 1;
+        }
+    }
+
+    // Show summary of notes status
+    if (notes_found) {
+        try writer.print("│  ✅ Slices with parent notes: \x1b[1;32m{d}\x1b[0m\n", .{notes_with_parents});
+        if (notes_without_parents > 0) {
+            try writer.print("│  ⚠️  Slices without parent notes: \x1b[1;33m{d}\x1b[0m\n", .{notes_without_parents});
+        }
+    } else {
+        try writer.print("│  📄 No git notes found for slice relationships\n", .{});
+        try writer.print("│  💡 \x1b[2mTip: Use git notes to preserve relationships after rebasing\x1b[0m\n", .{});
+    }
+
+    // Show instructions for team collaboration if notes exist
+    if (notes_found) {
+        try writer.print("│  \x1b[2m💡 Team tip: Push notes with 'git push origin refs/notes/commits'\x1b[0m\n", .{});
+    }
 }
 
 test {

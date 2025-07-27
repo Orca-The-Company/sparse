@@ -26,15 +26,16 @@ pub const GitNote = struct {
         commit_id: GitOID,
         note_content: []const u8,
         signature: GitSignature,
+        notes_ref: []const u8,
     ) !GitOID {
-        var note_oid = GitOID{};
+        var note_oid: c.git_oid = undefined;
 
         const res = c.git_note_create(
-            &note_oid.value,
+            &note_oid,
             repo.value,
+            notes_ref.ptr,
             signature.value,
             signature.value,
-            NOTES_DEFAULT_REF.ptr,
             &commit_id.value.?,
             note_content.ptr,
             0, // allow_updates = false initially
@@ -43,27 +44,27 @@ pub const GitNote = struct {
         if (res < 0) {
             if (res == c.GIT_EEXISTS) {
                 // Note already exists, update it instead
-                return update(repo, commit_id, note_content, signature);
+                return update(repo, commit_id, note_content, signature, notes_ref);
             }
             log.err("Failed to create note with error code: {d}", .{res});
             return GitError.NOTE_CREATE_FAILED;
         }
 
-        log.debug("Created note for commit {s}", .{commit_id.str()});
-        return note_oid;
+        log.debug("[create]:: Created note for commit {s} in namespace {s}", .{ commit_id.str(), notes_ref });
+        return GitOID{ .value = note_oid };
     }
 
     // Reads existing git note for a commit
-    pub fn read(repo: GitRepository, commit_id: GitOID) !?GitNote {
+    pub fn read(repo: GitRepository, commit_id: GitOID, notes_ref: []const u8) !?GitNote {
         var note: ?*c.git_note = null;
 
-        const res = c.git_note_read(&note, repo.value, NOTES_DEFAULT_REF.ptr, &commit_id.value.?);
+        const res = c.git_note_read(&note, repo.value, notes_ref.ptr, &commit_id.value.?);
 
         if (res < 0) {
             if (res == c.GIT_ENOTFOUND) {
                 return null; // No note exists, not an error
             }
-            log.err("Failed to read note with error code: {d}", .{res});
+            log.err("[read]:: Failed to read note from namespace {s} with error code: {d}", .{ notes_ref, res });
             return GitError.NOTE_READ_FAILED;
         }
 
@@ -78,15 +79,16 @@ pub const GitNote = struct {
         commit_id: GitOID,
         note_content: []const u8,
         signature: GitSignature,
+        notes_ref: []const u8,
     ) !GitOID {
-        var note_oid = GitOID{};
+        var note_oid: c.git_oid = undefined;
 
         const res = c.git_note_create(
-            &note_oid.value,
+            &note_oid,
             repo.value,
+            notes_ref.ptr,
             signature.value,
             signature.value,
-            NOTES_DEFAULT_REF.ptr,
             &commit_id.value.?,
             note_content.ptr,
             1, // allow_updates = true
@@ -97,15 +99,15 @@ pub const GitNote = struct {
             return GitError.NOTE_UPDATE_FAILED;
         }
 
-        log.debug("Updated note for commit {s}", .{commit_id.str()});
-        return note_oid;
+        log.debug("[update]:: Updated note for commit {s} in namespace {s}", .{ commit_id.str(), notes_ref });
+        return GitOID{ .value = note_oid };
     }
 
     // Removes git note for a commit
-    pub fn remove(repo: GitRepository, commit_id: GitOID, signature: GitSignature) !void {
+    pub fn remove(repo: GitRepository, commit_id: GitOID, signature: GitSignature, notes_ref: []const u8) !void {
         const res = c.git_note_remove(
             repo.value,
-            NOTES_DEFAULT_REF.ptr,
+            notes_ref.ptr,
             signature.value,
             signature.value,
             &commit_id.value.?,
@@ -115,11 +117,11 @@ pub const GitNote = struct {
             if (res == c.GIT_ENOTFOUND) {
                 return; // Note doesn't exist, not an error
             }
-            log.err("Failed to remove note with error code: {d}", .{res});
+            log.err("[remove]:: Failed to remove note from namespace {s} with error code: {d}", .{ notes_ref, res });
             return GitError.NOTE_DELETE_FAILED;
         }
 
-        log.debug("Removed note for commit {s}", .{commit_id.str()});
+        log.debug("[remove]:: Removed note for commit {s} from namespace {s}", .{ commit_id.str(), notes_ref });
     }
 
     // Returns the raw content of the git note
@@ -156,7 +158,7 @@ pub const GitNoteIterator = struct {
         const res = c.git_note_iterator_new(&iterator, repo.value, ref_name.ptr);
 
         if (res < 0) {
-            log.err("Failed to create note iterator with error code: {d}", .{res});
+            log.err("[init]:: Failed to create note iterator with error code: {d}", .{res});
             return GitError.NOTE_ITERATOR_FAILED;
         }
 
@@ -171,10 +173,10 @@ pub const GitNoteIterator = struct {
             return null;
         }
 
-        var note_id = GitOID{};
-        var annotated_id = GitOID{};
+        var note_id: c.git_oid = undefined;
+        var annotated_id: c.git_oid = undefined;
 
-        const res = c.git_note_next(&note_id.value, &annotated_id.value, self.value);
+        const res = c.git_note_next(&note_id, &annotated_id, self.value);
 
         if (res < 0) {
             if (res == c.GIT_ITEROVER) {
@@ -185,8 +187,8 @@ pub const GitNoteIterator = struct {
         }
 
         return NoteInfo{
-            .note_id = note_id,
-            .annotated_id = annotated_id,
+            .note_id = GitOID{ .value = note_id },
+            .annotated_id = GitOID{ .value = annotated_id },
         };
     }
 

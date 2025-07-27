@@ -259,7 +259,6 @@ pub fn update(o: struct {
     }
 }
 
-
 /// Displays comprehensive status information for the currently active sparse feature.
 ///
 /// This function provides a detailed overview of the current feature's state, including:
@@ -558,7 +557,7 @@ fn updateGoodWeather(o: struct {
         .slice_pool = o.feature.slices.?.items,
     });
     defer o.alloc.free(leaves);
-    
+
     var ss: ?*Slice = leaves[0];
     const upstream = try target.?.upstream(ss.?.repo);
     defer upstream.free();
@@ -629,7 +628,9 @@ fn updateGoodWeather(o: struct {
 
         // push all unmerged slices in remotes
         ss = leaves[0];
-        var pushed_any_slice = false;
+        var pushed_slices = std.ArrayList(*Slice).init(o.alloc);
+        defer pushed_slices.deinit();
+
         while (ss != null) : (ss = ss.?.target) {
             const is_merged = try ss.?.isMerged(.{
                 .alloc = o.alloc,
@@ -638,19 +639,20 @@ fn updateGoodWeather(o: struct {
             if (!is_merged) {
                 try ss.?.activate(o.alloc);
                 try ss.?.push(o.alloc);
-                pushed_any_slice = true;
+                try pushed_slices.append(ss.?);
             } else break;
         }
-        
+
         // Push git notes after successfully pushing slices
-        if (pushed_any_slice) {
+        if (pushed_slices.items.len > 0) {
             try stdout.print("📝 Pushing git notes to preserve slice relationships...\n", .{});
-            leaves[0].pushNotes(o.alloc) catch |err| {
-                try stdout.print("⚠️  Warning: Failed to push git notes: {}\n", .{err});
-                try stdout.print("   Run 'git push origin refs/notes/commits' manually to share slice relationships\n", .{});
-            };
+            for (pushed_slices.items) |pushed_slice| {
+                pushed_slice.pushNotes(o.alloc) catch |err| {
+                    try stdout.print("⚠️  Warning: Failed to push git notes for slice {s}: {}\n", .{ pushed_slice.name(), err });
+                };
+            }
         }
-        
+
         try jump(.{ .allocator = o.alloc, .to = o.feature });
         try o.state.delete();
 
@@ -717,7 +719,9 @@ fn handleUpdateInProgress(alloc: std.mem.Allocator, state: *State.Update) !void 
 
                 const upstream = try target.upstream(ss.?.repo);
                 defer upstream.free();
-                var pushed_any_slice = false;
+                var pushed_slices = std.ArrayList(*Slice).init(alloc);
+                defer pushed_slices.deinit();
+
                 while (ss != null) : (ss = ss.?.target) {
                     const is_merged = try ss.?.isMerged(.{
                         .alloc = alloc,
@@ -726,20 +730,20 @@ fn handleUpdateInProgress(alloc: std.mem.Allocator, state: *State.Update) !void 
                     if (!is_merged) {
                         try ss.?.activate(alloc);
                         try ss.?.push(alloc);
-                        pushed_any_slice = true;
+                        try pushed_slices.append(ss.?);
                     } else break;
                 }
-                
+
                 // Push git notes after successfully pushing slices
-                if (pushed_any_slice) {
-                    const stdout_writer = std.io.getStdOut().writer();
-                    try stdout_writer.print("📝 Pushing git notes to preserve slice relationships...\n", .{});
-                    leaves[0].pushNotes(alloc) catch |err| {
-                        try stdout_writer.print("⚠️  Warning: Failed to push git notes: {}\n", .{err});
-                        try stdout_writer.print("   Run 'git push origin refs/notes/commits' manually to share slice relationships\n", .{});
-                    };
+                if (pushed_slices.items.len > 0) {
+                    try stdout.print("📝 Pushing git notes to preserve slice relationships...\n", .{});
+                    for (pushed_slices.items) |pushed_slice| {
+                        pushed_slice.pushNotes(alloc) catch |err| {
+                            try stdout.print("⚠️  Warning: Failed to push git notes for slice {s}: {}\n", .{ pushed_slice.name(), err });
+                        };
+                    }
                 }
-                
+
                 try jump(.{ .allocator = alloc, .to = f });
                 try state.delete();
                 try stdout.print("✓ Successfully completed update for feature '{s}'\n", .{f.name});
@@ -836,7 +840,7 @@ fn displayGitNotesInfo(alloc: std.mem.Allocator, writer: anytype, slices: []Slic
                 defer alloc.free(parent_info);
                 notes_found = true;
                 notes_with_parents += 1;
-                
+
                 const slice_name = slice_item.name();
                 try writer.print("│  📝 \x1b[1m{s}:\x1b[0m parent → \x1b[32m{s}\x1b[0m\n", .{ slice_name, parent_info });
             } else {

@@ -427,11 +427,92 @@ pub const Slice = struct {
         }
     }
 
+    /// Pushes git notes to remote repository to share slice relationships with team
+    pub fn pushNotes(self: Slice, alloc: Allocator) !void {
+        // Get the slice-specific notes namespace
+        const notes_namespace = try self.notesNamespace(alloc);
+        defer alloc.free(notes_namespace);
+        
+        // Create refspec for pushing slice-specific notes
+        const refspec = try std.fmt.allocPrint(alloc, "{s}:{s}", .{ notes_namespace, notes_namespace });
+        defer alloc.free(refspec);
+        
+        const rr_push_notes = try Git.push(.{
+            .allocator = alloc,
+            .args = &.{
+                // TODO: use proper remote here
+                "origin",
+                refspec,
+            },
+        });
+        defer alloc.free(rr_push_notes.stderr);
+        defer alloc.free(rr_push_notes.stdout);
+        
+        if (rr_push_notes.term.Exited != 0) {
+            log.debug("pushNotes:: push notes stderr: {s}", .{rr_push_notes.stderr});
+            log.err(
+                "pushNotes:: push notes failed with exit code {d}",
+                .{rr_push_notes.term.Exited},
+            );
+            return SparseError.UNABLE_TO_PUSH_SLICE;
+        }
+        
+        log.info("Successfully pushed git notes to remote", .{});
+    }
+
+    /// Fetches git notes from remote repository to get latest slice relationships
+    pub fn fetchNotes(self: Slice, alloc: Allocator) !void {
+        // Get the slice-specific notes namespace
+        const notes_namespace = try self.notesNamespace(alloc);
+        defer alloc.free(notes_namespace);
+        
+        // Create refspec for fetching slice-specific notes
+        const refspec = try std.fmt.allocPrint(alloc, "{s}:{s}", .{ notes_namespace, notes_namespace });
+        defer alloc.free(refspec);
+        
+        const rr_fetch_notes = try Git.fetch(.{
+            .allocator = alloc,
+            .args = &.{
+                // TODO: use proper remote here
+                "origin",
+                refspec,
+            },
+        });
+        defer alloc.free(rr_fetch_notes.stderr);
+        defer alloc.free(rr_fetch_notes.stdout);
+        
+        if (rr_fetch_notes.term.Exited != 0) {
+            log.debug("fetchNotes:: fetch notes stderr: {s}", .{rr_fetch_notes.stderr});
+            log.err(
+                "fetchNotes:: fetch notes failed with exit code {d}",
+                .{rr_fetch_notes.term.Exited},
+            );
+            return SparseError.UNABLE_TO_PUSH_SLICE; // Reusing error for fetch
+        }
+        
+        log.info("Successfully fetched git notes from remote", .{});
+    }
+
     // Git notes methods for preserving slice parent relationships
 
+    /// Converts a slice branch name to its corresponding git notes namespace
+    /// Example: refs/heads/sparse/user/feature/slice/1 -> refs/notes/sparse/user/feature/slice/1
+    fn notesNamespace(self: Slice, alloc: Allocator) ![]u8 {
+        const branch_name = self.ref.name();
+        
+        // Convert refs/heads/sparse/... to refs/notes/sparse/...
+        if (std.mem.startsWith(u8, branch_name, "refs/heads/sparse/")) {
+            return try std.fmt.allocPrint(alloc, "refs/notes/{s}", .{branch_name["refs/heads/".len..]});
+        }
+        
+        // Fallback to default namespace if not a sparse branch
+        return try alloc.dupe(u8, "refs/notes/commits");
+    }
+
     /// Creates a git note recording the parent relationship for this slice
+    /// Uses slice-specific namespace to avoid conflicts between slices
     pub fn createParentNote(self: *Slice, parent_branch: []const u8, alloc: Allocator) !void {
-        const commit_oid = self.ref.target() orelse return SparseError.UNABLE_TO_GET_REFS;
+        const commit_oid = self.ref.target() orelse return SparseError.BACKEND_UNABLE_TO_GET_REFS;
 
         const signature = LibGit.GitSignature.default(self.repo) catch |err| {
             log.err("Failed to create signature for note: {}", .{err});
@@ -439,11 +520,15 @@ pub const Slice = struct {
         };
         defer signature.free();
 
+        // Get the slice-specific notes namespace
+        const notes_namespace = try self.notesNamespace(alloc);
+        defer alloc.free(notes_namespace);
+
         // Format note content
         const note_content = try std.fmt.allocPrint(alloc, "{s}{s}", .{ constants.SLICE_PARENT_NOTE_PREFIX, parent_branch });
         defer alloc.free(note_content);
 
-        _ = LibGit.GitNote.create(self.repo, commit_oid, note_content, signature) catch |err| {
+        _ = LibGit.GitNote.create(self.repo, commit_oid, note_content, signature, notes_namespace) catch |err| {
             log.err("Failed to create parent note for slice {s}: {}", .{ self.name(), err });
             return err;
         };
@@ -452,30 +537,51 @@ pub const Slice = struct {
     }
 
     /// Reads the parent branch from git notes for this slice
-    /// TODO: This logic is not robust since it only checks the latest commit in the branch for the note.
-    /// We might need to check all notes in the branch since the target of the feature and only accept
-    /// the latest `slice-parent:` to be source of truth.
+    /// Searches through all notes in the slice namespace to find the most recent parent note
     pub fn getParentFromNotes(self: *const Slice, alloc: Allocator) !?[]const u8 {
-        const commit_oid = self.ref.target() orelse return null;
+        // Get the slice-specific notes namespace
+        const notes_namespace = try self.notesNamespace(alloc);
+        defer alloc.free(notes_namespace);
 
-        const note = LibGit.GitNote.read(self.repo, commit_oid) catch |err| {
-            log.debug("Failed to read note for slice {s}: {}", .{ self.name(), err });
+        // Create iterator for notes in this slice's namespace
+        var notes_iter = LibGit.GitNoteIterator.init(self.repo, notes_namespace) catch |err| {
+            log.debug("Failed to create notes iterator for slice {s}: {}", .{ self.name(), err });
             return null;
         };
+        defer notes_iter.free();
 
-        if (note == null) {
-            return null; // No note exists
+        var latest_parent: ?[]const u8 = null;
+
+        // Iterate through all notes in the namespace to find parent notes
+        while (try notes_iter.next()) |note_info| {
+            const note = LibGit.GitNote.read(self.repo, note_info.annotated_id, notes_namespace) catch {
+                continue; // Skip notes we can't read
+            };
+
+            if (note) |n| {
+                defer n.free();
+                const note_content = n.content();
+                
+                // Check if this is a parent note and parse it
+                if (parseSliceParentNote(note_content, alloc)) |parent| {
+                    // Free previous parent if we found a more recent one
+                    if (latest_parent) |prev| {
+                        alloc.free(prev);
+                    }
+                    latest_parent = parent;
+                } else |_| {
+                    // Not a parent note, continue
+                    continue;
+                }
+            }
         }
 
-        defer note.?.free();
-
-        const note_content = note.?.content();
-        return parseSliceParentNote(note_content, alloc);
+        return latest_parent;
     }
 
     /// Updates the parent note for this slice
     pub fn updateParentNote(self: *Slice, new_parent_branch: []const u8, alloc: Allocator) !void {
-        const commit_oid = self.ref.target() orelse return SparseError.UNABLE_TO_GET_REFS;
+        const commit_oid = self.ref.target() orelse return SparseError.BACKEND_UNABLE_TO_GET_REFS;
 
         const signature = LibGit.GitSignature.default(self.repo) catch |err| {
             log.err("Failed to create signature for note update: {}", .{err});
@@ -483,11 +589,15 @@ pub const Slice = struct {
         };
         defer signature.free();
 
+        // Get the slice-specific notes namespace
+        const notes_namespace = try self.notesNamespace(alloc);
+        defer alloc.free(notes_namespace);
+
         // Format note content
         const note_content = try std.fmt.allocPrint(alloc, "{s}{s}", .{ constants.SLICE_PARENT_NOTE_PREFIX, new_parent_branch });
         defer alloc.free(note_content);
 
-        _ = LibGit.GitNote.update(self.repo, commit_oid, note_content, signature) catch |err| {
+        _ = LibGit.GitNote.update(self.repo, commit_oid, note_content, signature, notes_namespace) catch |err| {
             log.err("Failed to update parent note for slice {s}: {}", .{ self.name(), err });
             return err;
         };
@@ -496,8 +606,8 @@ pub const Slice = struct {
     }
 
     /// Removes the parent note for this slice
-    pub fn removeParentNote(self: *Slice) !void {
-        const commit_oid = self.ref.target() orelse return SparseError.UNABLE_TO_GET_REFS;
+    pub fn removeParentNote(self: *Slice, alloc: Allocator) !void {
+        const commit_oid = self.ref.target() orelse return SparseError.BACKEND_UNABLE_TO_GET_REFS;
 
         const signature = LibGit.GitSignature.default(self.repo) catch |err| {
             log.err("Failed to create signature for note removal: {}", .{err});
@@ -505,7 +615,11 @@ pub const Slice = struct {
         };
         defer signature.free();
 
-        LibGit.GitNote.remove(self.repo, commit_oid, signature) catch |err| {
+        // Get the slice-specific notes namespace
+        const notes_namespace = try self.notesNamespace(alloc);
+        defer alloc.free(notes_namespace);
+
+        LibGit.GitNote.remove(self.repo, commit_oid, signature, notes_namespace) catch |err| {
             log.debug("Failed to remove parent note for slice {s}: {}", .{ self.name(), err });
             return err;
         };

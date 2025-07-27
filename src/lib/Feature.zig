@@ -250,17 +250,38 @@ pub fn activate(self: *Feature, o: struct {
 
     log.debug("switch result: stdout:{s} stderr:{s}", .{ rr.stdout, rr.stderr });
 
-    // TODO: Add git notes to preserve slice parent relationship for rebasing/squashing scenarios
-    // When creating a new slice (o.create == true), add a git note to the HEAD commit that records
-    // the parent slice relationship. This will survive rebasing/squashing unlike reflog.
-    // Example: git notes add -m "slice-parent: <parent_branch_name>" HEAD
-    // This should be done after successful branch creation but before returning.
+    // Add git notes to preserve slice parent relationship for rebasing/squashing scenarios
     if (o.create) {
-        // TODO: Implement git notes creation using libgit2 or system Git wrapper
-        // - Add note with format: "slice-parent: <parent_branch_name>"
-        // - Parent should be o.start_point if provided, or "main" if not
-        // - Use libgit2 git_note_create() or add to system/Git.zig wrapper
-        // - Handle errors gracefully (notes are enhancement, not critical)
+        // Determine the parent branch for the git note
+        const parent_branch = if (o.start_point) |sp| sp else "main";
+        
+        // Create a slice object to use its createParentNote method
+        const repo = LibGit.GitRepository.open() catch |err| {
+            log.warn("Failed to open repository for git notes: {}", .{err});
+            return; // Don't fail slice creation if notes fail
+        };
+        defer repo.free();
+        
+        const ref = LibGit.GitReference.lookup(repo, slice_name) catch |err| {
+            log.warn("Failed to lookup newly created slice branch for git notes: {}", .{err});
+            return; // Don't fail slice creation if notes fail
+        };
+        defer ref.free();
+        
+        var slice = Slice{
+            .repo = repo,
+            .ref = ref,
+            ._is_merge_into_map = std.StringHashMap(bool).init(o.allocator),
+        };
+        defer slice._is_merge_into_map.deinit();
+        
+        // Create the parent note for this slice
+        slice.createParentNote(parent_branch, o.allocator) catch |err| {
+            log.warn("Failed to create parent note for slice {s}: {}", .{ slice_name, err });
+            // Don't fail slice creation if notes fail - this is an enhancement
+        };
+        
+        log.info("Created slice {s} with parent note: {s}", .{ slice_name, parent_branch });
     }
 }
 

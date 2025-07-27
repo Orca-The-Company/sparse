@@ -42,10 +42,6 @@ pub const GitNote = struct {
         );
 
         if (res < 0) {
-            if (res == c.GIT_EEXISTS) {
-                // Note already exists, update it instead
-                return update(repo, commit_id, note_content, signature, notes_ref);
-            }
             log.err("Failed to create note with error code: {d}", .{res});
             return GitError.NOTE_CREATE_FAILED;
         }

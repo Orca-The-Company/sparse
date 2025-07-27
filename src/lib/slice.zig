@@ -428,6 +428,7 @@ pub const Slice = struct {
     }
 
     /// Pushes git notes to remote repository to share slice relationships with team
+    /// Syncs all slice-specific note namespaces
     pub fn pushNotes(self: Slice, alloc: Allocator) !void {
         // Get the slice-specific notes namespace
         const notes_namespace = try self.notesNamespace(alloc);
@@ -492,8 +493,6 @@ pub const Slice = struct {
         }
         log.info("[fetchNotes]:: Successfully fetched git notes from remote", .{});
     }
-
-    // Git notes methods for preserving slice parent relationships
 
     /// Converts a slice branch name to its corresponding git notes namespace
     /// Example: refs/heads/sparse/user/feature/slice/1 -> refs/notes/sparse/user/feature/slice/1
@@ -636,59 +635,6 @@ pub const Slice = struct {
         self._is_merge_into_map.deinit();
     }
 };
-
-// Helper functions for remote notes sync
-
-/// Gets all slice-specific note namespaces that exist in the current repository
-/// Returns array of namespace strings that caller must free
-fn getAllSliceNoteNamespaces(alloc: Allocator) ![][]u8 {
-    const repo = try GitRepository.open();
-    defer repo.free();
-
-    // Get all slice branches
-    const all_slices = try Slice.getAllSlicesWith(.{ .alloc = alloc });
-    defer {
-        for (all_slices) |*slice| {
-            slice.free(alloc);
-        }
-        alloc.free(all_slices);
-    }
-
-    var namespaces = std.ArrayList([]u8).init(alloc);
-    errdefer {
-        for (namespaces.items) |namespace| {
-            alloc.free(namespace);
-        }
-        namespaces.deinit();
-    }
-
-    // Convert each slice to its note namespace
-    for (all_slices) |slice| {
-        const namespace = try slice.sliceBranchToNotesNamespace(alloc);
-
-        // Only add if it's a slice-specific namespace (not default)
-        if (!std.mem.eql(u8, namespace, "refs/notes/commits")) {
-            try namespaces.append(namespace);
-        } else {
-            alloc.free(namespace);
-        }
-    }
-
-    return namespaces.toOwnedSlice();
-}
-
-/// Gets the refspec pattern for fetching all sparse note namespaces
-/// Returns pattern like "refs/notes/sparse/*:refs/notes/sparse/*"
-fn getSparseNotesPattern(alloc: Allocator) ![]u8 {
-    const repo = try GitRepository.open();
-    defer repo.free();
-
-    const user_id = try SparseConfig.userId(alloc, repo);
-    defer alloc.free(user_id);
-
-    // Create pattern to fetch all notes for this user's slices
-    return try std.fmt.allocPrint(alloc, "refs/notes/sparse/{s}/*:refs/notes/sparse/{s}/*", .{ user_id, user_id });
-}
 
 // Helper functions for slice parent notes
 

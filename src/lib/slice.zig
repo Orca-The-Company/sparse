@@ -29,29 +29,57 @@ pub const Slice = struct {
         var orphan_count: usize = 0;
         var forked_count: usize = 0;
 
-        // TODO: investigate better ways to construct links between given slices
-        // Current implementation uses reflog via createdFrom() which fails after rebasing/squashing.
-        // Should be enhanced to:
-        // 1. First try reading slice parent relationships from git notes
-        // 2. Fall back to reflog analysis if notes are not available
-        // 3. Provide a hybrid approach that combines both methods for accuracy
+        // Hybrid approach: Try git notes first, fall back to reflog
+        // This provides reliability for repositories that have been rebased/squashed
         for (slices) |*s| {
-            // TODO: Replace this reflog-based approach with git notes reading
-            // Current createdFrom() uses reflog which is unreliable after rebasing/squashing
-            // Should implement: s.getParentFromNotes() that reads "slice-parent: <parent>" notes
-            // and falls back to createdFrom() if notes are not available
-            const created_from = s.ref.createdFrom(s.repo);
-            if (created_from) |c| {
-                defer c.free();
-                s.target = null;
-                for (slices) |*s_other| {
-                    if (std.mem.eql(u8, c.name(), s_other.ref.name())) {
-                        s.target = s_other;
-                        try s_other.children.append(alloc, s);
+            s.target = null;
+
+            // 1. First try reading slice parent relationships from git notes
+            var parent_found = false;
+            if (s.getParentFromNotes(alloc)) |maybe_parent_branch_name| {
+                if (maybe_parent_branch_name) |parent_branch_name| {
+                    defer alloc.free(parent_branch_name);
+                    log.debug("Found parent from git notes for slice {s}: {s}", .{ s.name(), parent_branch_name });
+
+                    // Look for the parent slice in our slice list
+                    for (slices) |*s_other| {
+                        const other_branch_name = s_other.ref.branchName() catch continue;
+                        if (std.mem.eql(u8, parent_branch_name, other_branch_name)) {
+                            s.target = s_other;
+                            try s_other.children.append(alloc, s);
+                            parent_found = true;
+                            log.debug("Linked slice {s} to parent {s} via git notes", .{ s.name(), s_other.name() });
+                            break;
+                        }
                     }
+
+                    if (!parent_found) {
+                        log.debug("Parent {s} from git notes not found in current slice list for {s}", .{ parent_branch_name, s.name() });
+                    }
+                } else {
+                    log.debug("No parent note found for slice {s}", .{s.name()});
                 }
-            } else {
-                s.target = null;
+            } else |err| {
+                log.debug("Failed to get parent from git notes for slice {s}: {}", .{ s.name(), err });
+            }
+
+            // 2. Fall back to reflog analysis if notes are not available
+            if (!parent_found) {
+                log.debug("Falling back to reflog analysis for slice {s}", .{s.name()});
+                const created_from = s.ref.createdFrom(s.repo);
+                if (created_from) |c| {
+                    defer c.free();
+                    for (slices) |*s_other| {
+                        if (std.mem.eql(u8, c.name(), s_other.ref.name())) {
+                            s.target = s_other;
+                            try s_other.children.append(alloc, s);
+                            log.debug("Linked slice {s} to parent {s} via reflog", .{ s.name(), s_other.name() });
+                            break;
+                        }
+                    }
+                } else {
+                    log.debug("No parent found via reflog for slice {s}", .{s.name()});
+                }
             }
             if (s.target == null) {
                 orphan_count += 1;
@@ -260,19 +288,6 @@ pub const Slice = struct {
         return try slices.toOwnedSlice(o.alloc);
     }
 
-    // TODO: Add function to read slice parent from git notes
-    // pub fn getParentFromNotes(self: *Slice, alloc: Allocator) !?[]const u8 {
-    //     // Read git note with format "slice-parent: <parent_branch_name>"
-    //     // Return parent branch name or null if no note exists
-    //     // Use libgit2 git_note_read() or system Git wrapper
-    // }
-
-    // TODO: Add function to set slice parent in git notes
-    // pub fn setParentInNotes(self: *Slice, alloc: Allocator, parent: []const u8) !void {
-    //     // Create git note with format "slice-parent: <parent_branch_name>"
-    //     // Use libgit2 git_note_create() or system Git wrapper
-    // }
-
     pub fn isMerged(self: *Slice, o: struct { alloc: Allocator, into: GitReference }) !bool {
         log.debug("isMerged:: self.name:{s}", .{self.ref.name()});
         log.debug("isMerged:: o.into.name:{s}", .{o.into.name()});
@@ -412,6 +427,92 @@ pub const Slice = struct {
         }
     }
 
+    // Git notes methods for preserving slice parent relationships
+
+    /// Creates a git note recording the parent relationship for this slice
+    pub fn createParentNote(self: *Slice, parent_branch: []const u8, alloc: Allocator) !void {
+        const commit_oid = self.ref.target() orelse return SparseError.UNABLE_TO_GET_REFS;
+
+        const signature = LibGit.GitSignature.default(self.repo) catch |err| {
+            log.err("Failed to create signature for note: {}", .{err});
+            return err;
+        };
+        defer signature.free();
+
+        // Format note content
+        const note_content = try std.fmt.allocPrint(alloc, "{s}{s}", .{ constants.SLICE_PARENT_NOTE_PREFIX, parent_branch });
+        defer alloc.free(note_content);
+
+        _ = LibGit.GitNote.create(self.repo, commit_oid, note_content, signature) catch |err| {
+            log.err("Failed to create parent note for slice {s}: {}", .{ self.name(), err });
+            return err;
+        };
+
+        log.info("Created parent note for slice {s} with parent: {s}", .{ self.name(), parent_branch });
+    }
+
+    /// Reads the parent branch from git notes for this slice
+    /// TODO: This logic is not robust since it only checks the latest commit in the branch for the note.
+    /// We might need to check all notes in the branch since the target of the feature and only accept
+    /// the latest `slice-parent:` to be source of truth.
+    pub fn getParentFromNotes(self: *const Slice, alloc: Allocator) !?[]const u8 {
+        const commit_oid = self.ref.target() orelse return null;
+
+        const note = LibGit.GitNote.read(self.repo, commit_oid) catch |err| {
+            log.debug("Failed to read note for slice {s}: {}", .{ self.name(), err });
+            return null;
+        };
+
+        if (note == null) {
+            return null; // No note exists
+        }
+
+        defer note.?.free();
+
+        const note_content = note.?.content();
+        return parseSliceParentNote(note_content, alloc);
+    }
+
+    /// Updates the parent note for this slice
+    pub fn updateParentNote(self: *Slice, new_parent_branch: []const u8, alloc: Allocator) !void {
+        const commit_oid = self.ref.target() orelse return SparseError.UNABLE_TO_GET_REFS;
+
+        const signature = LibGit.GitSignature.default(self.repo) catch |err| {
+            log.err("Failed to create signature for note update: {}", .{err});
+            return err;
+        };
+        defer signature.free();
+
+        // Format note content
+        const note_content = try std.fmt.allocPrint(alloc, "{s}{s}", .{ constants.SLICE_PARENT_NOTE_PREFIX, new_parent_branch });
+        defer alloc.free(note_content);
+
+        _ = LibGit.GitNote.update(self.repo, commit_oid, note_content, signature) catch |err| {
+            log.err("Failed to update parent note for slice {s}: {}", .{ self.name(), err });
+            return err;
+        };
+
+        log.info("Updated parent note for slice {s} with new parent: {s}", .{ self.name(), new_parent_branch });
+    }
+
+    /// Removes the parent note for this slice
+    pub fn removeParentNote(self: *Slice) !void {
+        const commit_oid = self.ref.target() orelse return SparseError.UNABLE_TO_GET_REFS;
+
+        const signature = LibGit.GitSignature.default(self.repo) catch |err| {
+            log.err("Failed to create signature for note removal: {}", .{err});
+            return err;
+        };
+        defer signature.free();
+
+        LibGit.GitNote.remove(self.repo, commit_oid, signature) catch |err| {
+            log.debug("Failed to remove parent note for slice {s}: {}", .{ self.name(), err });
+            return err;
+        };
+
+        log.info("Removed parent note for slice {s}", .{self.name()});
+    }
+
     pub fn free(self: *Slice, alloc: Allocator) void {
         self.ref.free();
         self.repo.free();
@@ -419,6 +520,111 @@ pub const Slice = struct {
         self._is_merge_into_map.deinit();
     }
 };
+
+// Helper functions for slice parent notes
+
+/// Parses slice parent note content and extracts parent branch name
+fn parseSliceParentNote(note_content: []const u8, alloc: Allocator) !?[]const u8 {
+    // Look for "slice-parent: " prefix
+    if (!std.mem.startsWith(u8, note_content, constants.SLICE_PARENT_NOTE_PREFIX)) {
+        return null; // Not a valid slice parent note
+    }
+
+    const parent_name = note_content[constants.SLICE_PARENT_NOTE_PREFIX.len..];
+
+    // Trim whitespace and validate
+    const trimmed = std.mem.trim(u8, parent_name, " \t\n\r");
+    if (trimmed.len == 0) {
+        return null; // Empty parent name
+    }
+
+    return try alloc.dupe(u8, trimmed);
+}
+
+/// Finds all slices that have parent notes in the repository
+pub fn findSlicesWithParentNotes(repo: GitRepository, alloc: Allocator) ![]LibGit.GitOID {
+    var iterator = LibGit.GitNoteIterator.init(repo, null) catch |err| {
+        log.err("Failed to create note iterator: {}", .{err});
+        return err;
+    };
+    defer iterator.free();
+
+    var slice_commits = std.ArrayList(LibGit.GitOID).init(alloc);
+    errdefer slice_commits.deinit();
+
+    while (iterator.next() catch |err| {
+        log.err("Failed to iterate notes: {}", .{err});
+        return err;
+    }) |note_info| {
+        // Read the note to check if it's a slice parent note
+        if (LibGit.GitNote.read(repo, note_info.annotated_id) catch null) |note| {
+            defer note.free();
+
+            const note_content = note.content();
+            if (std.mem.startsWith(u8, note_content, constants.SLICE_PARENT_NOTE_PREFIX)) {
+                try slice_commits.append(note_info.annotated_id);
+                log.debug("Found slice parent note for commit: {s}", .{note_info.annotated_id.str()});
+            }
+        }
+    }
+
+    log.info("Found {d} commits with slice parent notes", .{slice_commits.items.len});
+    return slice_commits.toOwnedSlice();
+}
+
+test "parseSliceParentNote" {
+    const expectEqualStrings = std.testing.expectEqualStrings;
+    const expect = std.testing.expect;
+    const allocator = std.testing.allocator;
+
+    // Test valid slice parent note
+    {
+        const note_content = "slice-parent: main";
+        const result = try parseSliceParentNote(note_content, allocator);
+        try expect(result != null);
+        defer allocator.free(result.?);
+        try expectEqualStrings("main", result.?);
+    }
+
+    // Test valid slice parent note with feature branch
+    {
+        const note_content = "slice-parent: sparse/user/feature/slice/1";
+        const result = try parseSliceParentNote(note_content, allocator);
+        try expect(result != null);
+        defer allocator.free(result.?);
+        try expectEqualStrings("sparse/user/feature/slice/1", result.?);
+    }
+
+    // Test note with whitespace around parent name
+    {
+        const note_content = "slice-parent:   feature-branch  \t\n";
+        const result = try parseSliceParentNote(note_content, allocator);
+        try expect(result != null);
+        defer allocator.free(result.?);
+        try expectEqualStrings("feature-branch", result.?);
+    }
+
+    // Test invalid note without correct prefix
+    {
+        const note_content = "some other note content";
+        const result = try parseSliceParentNote(note_content, allocator);
+        try expect(result == null);
+    }
+
+    // Test note with prefix but empty parent name
+    {
+        const note_content = "slice-parent:   \t\n";
+        const result = try parseSliceParentNote(note_content, allocator);
+        try expect(result == null);
+    }
+
+    // Test note with partial prefix
+    {
+        const note_content = "slice-pare: main";
+        const result = try parseSliceParentNote(note_content, allocator);
+        try expect(result == null);
+    }
+}
 
 const utils = @import("utils.zig");
 const LibGit = @import("libgit2/libgit2.zig");
@@ -429,7 +635,7 @@ const GitReference = LibGit.GitReference;
 const GitReferenceIterator = LibGit.GitReferenceIterator;
 const GitRepository = LibGit.GitRepository;
 const GitMerge = LibGit.GitMerge;
-const constants = @import("constants.zig");
 const SparseConfig = @import("config.zig").SparseConfig;
 const SparseError = @import("sparse.zig").Error;
 const Git = @import("system/Git.zig");
+const constants = @import("constants.zig");

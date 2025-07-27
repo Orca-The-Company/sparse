@@ -463,14 +463,20 @@ pub const Slice = struct {
 
     /// Fetches git notes from remote repository to get latest slice relationships
     pub fn fetchNotes(self: Slice, alloc: Allocator) !void {
-        _ = self; // We fetch all notes, not just for this slice
+        // Get the slice-specific notes namespace
+        const notes_namespace = try self.notesNamespace(alloc);
+        defer alloc.free(notes_namespace);
+        
+        // Create refspec for fetching slice-specific notes
+        const refspec = try std.fmt.allocPrint(alloc, "{s}:{s}", .{ notes_namespace, notes_namespace });
+        defer alloc.free(refspec);
         
         const rr_fetch_notes = try Git.fetch(.{
             .allocator = alloc,
             .args = &.{
                 // TODO: use proper remote here
                 "origin",
-                "refs/notes/commits:refs/notes/commits",
+                refspec,
             },
         });
         defer alloc.free(rr_fetch_notes.stderr);
@@ -531,7 +537,7 @@ pub const Slice = struct {
     }
 
     /// Reads the parent branch from git notes for this slice
-    /// Uses slice-specific namespace to avoid conflicts between slices
+    /// Searches through all notes in the slice namespace to find the most recent parent note
     pub fn getParentFromNotes(self: *const Slice, alloc: Allocator) !?[]const u8 {
         // Get the slice-specific notes namespace
         const notes_namespace = try self.notesNamespace(alloc);

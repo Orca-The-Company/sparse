@@ -253,17 +253,18 @@ pub fn activate(self: *Feature, o: struct {
     // Add git notes to preserve slice parent relationship for rebasing/squashing scenarios
     if (o.create) {
         // Determine the parent branch for the git note
+        // TODO: Use SparseConfig.default_base_branch as fallback when start_point is not provided
         const parent_branch = if (o.start_point) |sp| sp else "main";
         
         // Create a slice object to use its createParentNote method
         const repo = LibGit.GitRepository.open() catch |err| {
-            log.warn("Failed to open repository for git notes: {}", .{err});
+            log.warn("[activate]:: Failed to open repository for git notes: {}", .{err});
             return; // Don't fail slice creation if notes fail
         };
         defer repo.free();
         
         const ref = LibGit.GitReference.lookup(repo, slice_name) catch |err| {
-            log.warn("Failed to lookup newly created slice branch for git notes: {}", .{err});
+            log.warn("[activate]:: Failed to lookup newly created slice branch for git notes: {}", .{err});
             return; // Don't fail slice creation if notes fail
         };
         defer ref.free();
@@ -273,15 +274,17 @@ pub fn activate(self: *Feature, o: struct {
             .ref = ref,
             ._is_merge_into_map = std.StringHashMap(bool).init(o.allocator),
         };
+        // Note: slice is stack-allocated and holds references to repo/ref which are freed 
+        // at the end of this scope via defer statements above
         defer slice._is_merge_into_map.deinit();
         
         // Create the parent note for this slice
         slice.createParentNote(parent_branch, o.allocator) catch |err| {
-            log.warn("Failed to create parent note for slice {s}: {}", .{ slice_name, err });
+            log.warn("[activate]:: Failed to create parent note for slice {s}: {}", .{ slice_name, err });
             // Don't fail slice creation if notes fail - this is an enhancement
         };
-        
-        log.info("Created slice {s} with parent note: {s}", .{ slice_name, parent_branch });
+
+        log.info("[activate]:: Created slice {s} with parent note: {s}", .{ slice_name, parent_branch });
     }
 }
 

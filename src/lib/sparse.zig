@@ -152,7 +152,10 @@ pub fn slice(o: struct { slice_name: ?[]const u8 }) !void {
     if (current_feature) |*cf| {
         if (cf.slices) |slices| {
             if (slices.items.len == 0) {
-                log.warn("slice:: current_feature('{s}') doesnt have any slices, this is unexpected will try to create a slice anyways", .{current_feature.?.name});
+                log.warn(
+                    "slice:: current_feature('{s}') doesnt have any slices, this is unexpected will try to create a slice anyways",
+                    .{current_feature.?.name},
+                );
             }
             const leaves = try Slice.leafNodes(.{ .alloc = allocator, .slice_pool = slices.items });
             defer allocator.free(leaves);
@@ -190,10 +193,16 @@ pub fn slice(o: struct { slice_name: ?[]const u8 }) !void {
                 .start_point = start_point,
             });
         } else {
-            log.warn("slice:: current_feature('{s}') doesnt have any slices, this is unexpected will try to create a slice anyways", .{current_feature.?.name});
+            log.warn(
+                "slice:: current_feature('{s}') doesnt have any slices, this is unexpected will try to create a slice anyways",
+                .{current_feature.?.name},
+            );
         }
     } else {
-        log.err("slice:: couldn't find current feature, cannot execute slice commands outside of a feature, make sure you have commits in the repository", .{});
+        log.err(
+            "slice:: couldn't find current feature, cannot execute slice commands outside of a feature, make sure you have commits in the repository",
+            .{},
+        );
         return Error.UNABLE_TO_DETECT_CURRENT_FEATURE;
     }
 }
@@ -258,7 +267,6 @@ pub fn update(o: struct {
         }
     }
 }
-
 
 /// Displays comprehensive status information for the currently active sparse feature.
 ///
@@ -558,7 +566,7 @@ fn updateGoodWeather(o: struct {
         .slice_pool = o.feature.slices.?.items,
     });
     defer o.alloc.free(leaves);
-    
+
     var ss: ?*Slice = leaves[0];
     const upstream = try target.?.upstream(ss.?.repo);
     defer upstream.free();
@@ -641,7 +649,7 @@ fn updateGoodWeather(o: struct {
                 pushed_any_slice = true;
             } else break;
         }
-        
+
         // Push git notes after successfully pushing slices
         if (pushed_any_slice) {
             try stdout.print("📝 Pushing git notes to preserve slice relationships...\n", .{});
@@ -650,7 +658,7 @@ fn updateGoodWeather(o: struct {
                 try stdout.print("   Run 'git push origin refs/notes/commits' manually to share slice relationships\n", .{});
             };
         }
-        
+
         try jump(.{ .allocator = o.alloc, .to = o.feature });
         try o.state.delete();
 
@@ -729,7 +737,7 @@ fn handleUpdateInProgress(alloc: std.mem.Allocator, state: *State.Update) !void 
                         pushed_any_slice = true;
                     } else break;
                 }
-                
+
                 // Push git notes after successfully pushing slices
                 if (pushed_any_slice) {
                     try stdout.print("📝 Pushing git notes to preserve slice relationships...\n", .{});
@@ -738,7 +746,7 @@ fn handleUpdateInProgress(alloc: std.mem.Allocator, state: *State.Update) !void 
                         try stdout.print("   Run 'git push origin refs/notes/commits' manually to share slice relationships\n", .{});
                     };
                 }
-                
+
                 try jump(.{ .allocator = alloc, .to = f });
                 try state.delete();
                 try stdout.print("✓ Successfully completed update for feature '{s}'\n", .{f.name});
@@ -835,7 +843,7 @@ fn displayGitNotesInfo(alloc: std.mem.Allocator, writer: anytype, slices: []Slic
                 defer alloc.free(parent_info);
                 notes_found = true;
                 notes_with_parents += 1;
-                
+
                 const slice_name = slice_item.name();
                 try writer.print("│  📝 \x1b[1m{s}:\x1b[0m parent → \x1b[32m{s}\x1b[0m\n", .{ slice_name, parent_info });
             } else {

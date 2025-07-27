@@ -1,4 +1,4 @@
-// TODO: Implement git notes functionality for preserving slice parent relationships
+// Implement git notes functionality for preserving slice parent relationships
 // This module wraps libgit2's git notes API to provide slice relationship persistence
 // that survives rebasing/squashing operations, unlike reflog-based approaches.
 
@@ -6,233 +6,198 @@ const std = @import("std");
 const log = std.log.scoped(.git_note);
 const c = @import("c.zig").c;
 
-// TODO: Import required types from other libgit2 modules
-// const GitRepository = @import("repository.zig").GitRepository;
-// const GitReference = @import("reference.zig").GitReference;
-// const GitString = @import("types.zig").GitString;
-// const GitError = @import("error.zig").GitError;
-// const GitOid = @import("types.zig").GitOid;
-// const GitSignature = @import("signature.zig").GitSignature;
+// Import required types from other libgit2 modules
+const GitRepository = @import("repository.zig").GitRepository;
+const GitString = @import("types.zig").GitString;
+const GitError = @import("error.zig").GitError;
+const GitOID = @import("types.zig").GitOID;
+const GitSignature = @import("signature.zig").GitSignature;
 
-// TODO: Define constants for slice parent notes
-// pub const SLICE_PARENT_NOTE_PREFIX: []const u8 = "slice-parent: ";
-// pub const NOTES_DEFAULT_REF: []const u8 = "refs/notes/commits";
+// Define constants for git notes
+pub const NOTES_DEFAULT_REF: []const u8 = "refs/notes/commits";
 
-// TODO: Create GitNote struct to wrap libgit2 git_note operations
+// GitNote struct to wrap libgit2 git_note operations
 pub const GitNote = struct {
-    // TODO: Add fields for libgit2 note handling
-    // value: ?*c.git_note = null,
-    // _repo: GitRepository,
-    // _ref: []const u8 = NOTES_DEFAULT_REF,
+    value: ?*c.git_note = null,
 
-    // TODO: Implement note creation function
-    // Creates a git note with slice parent relationship information
-    // Example: "slice-parent: sparse/user/feature/slice/1" or "slice-parent: main"
-    // pub fn create(
-    //     repo: GitRepository,
-    //     commit_id: GitOid,
-    //     parent_info: []const u8,
-    //     signature: GitSignature,
-    // ) !GitNote {
-    //     // Use git_note_create() to create note with format: "slice-parent: <parent>"
-    //     // Handle GIT_EEXISTS error if note already exists (update instead)
-    //     // Return wrapped GitNote struct
-    // }
+    // Creates a git note with the provided content
+    pub fn create(
+        repo: GitRepository,
+        commit_id: GitOID,
+        note_content: []const u8,
+        signature: GitSignature,
+    ) !GitOID {
+        var note_oid = GitOID{};
 
-    // TODO: Implement note reading function
-    // Reads existing git note for a commit and extracts slice parent information
-    // pub fn read(repo: GitRepository, commit_id: GitOid) !?GitNote {
-    //     // Use git_note_read() to read existing note
-    //     // Return null if no note exists
-    //     // Handle GIT_ENOTFOUND gracefully
-    // }
+        const res = c.git_note_create(
+            &note_oid.value,
+            repo.value,
+            signature.value,
+            signature.value,
+            NOTES_DEFAULT_REF.ptr,
+            &commit_id.value.?,
+            note_content.ptr,
+            0, // allow_updates = false initially
+        );
 
-    // TODO: Implement note content parsing
-    // Extracts slice parent information from note content
-    // pub fn getSliceParent(self: GitNote) !?[]const u8 {
-    //     // Parse note content looking for "slice-parent: <parent>" pattern
-    //     // Return parent branch name or null if not a slice parent note
-    //     // Handle malformed note content gracefully
-    // }
+        if (res < 0) {
+            if (res == c.GIT_EEXISTS) {
+                // Note already exists, update it instead
+                return update(repo, commit_id, note_content, signature);
+            }
+            log.err("Failed to create note with error code: {d}", .{res});
+            return GitError.NOTE_CREATE_FAILED;
+        }
 
-    // TODO: Implement note updating function
-    // Updates existing note with new slice parent information
-    // pub fn update(
-    //     self: *GitNote,
-    //     new_parent_info: []const u8,
-    //     signature: GitSignature,
-    // ) !void {
-    //     // Use git_note_create() with force=true to update existing note
-    //     // Format: "slice-parent: <new_parent>"
-    // }
+        log.debug("Created note for commit {s}", .{commit_id.str()});
+        return note_oid;
+    }
 
-    // TODO: Implement note deletion function
+    // Reads existing git note for a commit
+    pub fn read(repo: GitRepository, commit_id: GitOID) !?GitNote {
+        var note: ?*c.git_note = null;
+
+        const res = c.git_note_read(&note, repo.value, NOTES_DEFAULT_REF.ptr, &commit_id.value.?);
+
+        if (res < 0) {
+            if (res == c.GIT_ENOTFOUND) {
+                return null; // No note exists, not an error
+            }
+            log.err("Failed to read note with error code: {d}", .{res});
+            return GitError.NOTE_READ_FAILED;
+        }
+
+        return GitNote{
+            .value = note,
+        };
+    }
+
+    // Updates existing note with new content
+    pub fn update(
+        repo: GitRepository,
+        commit_id: GitOID,
+        note_content: []const u8,
+        signature: GitSignature,
+    ) !GitOID {
+        var note_oid = GitOID{};
+
+        const res = c.git_note_create(
+            &note_oid.value,
+            repo.value,
+            signature.value,
+            signature.value,
+            NOTES_DEFAULT_REF.ptr,
+            &commit_id.value.?,
+            note_content.ptr,
+            1, // allow_updates = true
+        );
+
+        if (res < 0) {
+            log.err("Failed to update note with error code: {d}", .{res});
+            return GitError.NOTE_UPDATE_FAILED;
+        }
+
+        log.debug("Updated note for commit {s}", .{commit_id.str()});
+        return note_oid;
+    }
+
     // Removes git note for a commit
-    // pub fn remove(repo: GitRepository, commit_id: GitOid, signature: GitSignature) !void {
-    //     // Use git_note_remove() to delete note
-    //     // Handle GIT_ENOTFOUND gracefully (note may not exist)
-    // }
+    pub fn remove(repo: GitRepository, commit_id: GitOID, signature: GitSignature) !void {
+        const res = c.git_note_remove(
+            repo.value,
+            NOTES_DEFAULT_REF.ptr,
+            signature.value,
+            signature.value,
+            &commit_id.value.?,
+        );
 
-    // TODO: Implement note content getter
+        if (res < 0) {
+            if (res == c.GIT_ENOTFOUND) {
+                return; // Note doesn't exist, not an error
+            }
+            log.err("Failed to remove note with error code: {d}", .{res});
+            return GitError.NOTE_DELETE_FAILED;
+        }
+
+        log.debug("Removed note for commit {s}", .{commit_id.str()});
+    }
+
     // Returns the raw content of the git note
-    // pub fn content(self: GitNote) []const u8 {
-    //     // Use git_note_message() to get note content
-    //     // Return as GitString for consistency with other libgit2 wrappers
-    // }
+    pub fn content(self: GitNote) []const u8 {
+        if (self.value) |note| {
+            const c_message = c.git_note_message(note);
+            return std.mem.span(c_message);
+        }
+        return "";
+    }
 
-    // TODO: Implement resource cleanup
-    // pub fn free(self: GitNote) void {
-    //     // Use git_note_free() to cleanup libgit2 resources
-    // }
+    // Cleanup libgit2 resources
+    pub fn free(self: GitNote) void {
+        if (self.value) |note| {
+            c.git_note_free(note);
+        }
+    }
 };
 
-// TODO: Create GitNoteIterator for iterating through notes
+// GitNoteIterator for iterating through notes
 pub const GitNoteIterator = struct {
-    // TODO: Add fields for libgit2 note iterator
-    // value: ?*c.git_note_iterator = null,
-    // _repo: GitRepository,
+    value: ?*c.git_note_iterator = null,
 
-    // TODO: Implement iterator initialization
+    pub const NoteInfo = struct {
+        note_id: GitOID,
+        annotated_id: GitOID,
+    };
+
     // Creates iterator for all notes in a repository
-    // pub fn init(repo: GitRepository, notes_ref: ?[]const u8) !GitNoteIterator {
-    //     // Use git_note_iterator_new() to create iterator
-    //     // Default to "refs/notes/commits" if notes_ref is null
-    // }
+    pub fn init(repo: GitRepository, notes_ref: ?[]const u8) !GitNoteIterator {
+        var iterator: ?*c.git_note_iterator = null;
+        const ref_name = notes_ref orelse NOTES_DEFAULT_REF;
 
-    // TODO: Implement iterator next function
+        const res = c.git_note_iterator_new(&iterator, repo.value, ref_name.ptr);
+
+        if (res < 0) {
+            log.err("Failed to create note iterator with error code: {d}", .{res});
+            return GitError.NOTE_ITERATOR_FAILED;
+        }
+
+        return GitNoteIterator{
+            .value = iterator,
+        };
+    }
+
     // Returns next note in iteration
-    // pub fn next(self: *GitNoteIterator) !?GitNote {
-    //     // Use git_note_next() to get next note
-    //     // Return null when iteration is complete
-    //     // Return wrapped GitNote struct
-    // }
+    pub fn next(self: *GitNoteIterator) !?NoteInfo {
+        if (self.value == null) {
+            return null;
+        }
 
-    // TODO: Implement resource cleanup
-    // pub fn free(self: GitNoteIterator) void {
-    //     // Use git_note_iterator_free() to cleanup resources
-    // }
+        var note_id = GitOID{};
+        var annotated_id = GitOID{};
+
+        const res = c.git_note_next(&note_id.value, &annotated_id.value, self.value);
+
+        if (res < 0) {
+            if (res == c.GIT_ITEROVER) {
+                return null; // End of iteration
+            }
+            log.err("Failed to get next note with error code: {d}", .{res});
+            return GitError.NOTE_ITERATOR_FAILED;
+        }
+
+        return NoteInfo{
+            .note_id = note_id,
+            .annotated_id = annotated_id,
+        };
+    }
+
+    // Cleanup resources
+    pub fn free(self: GitNoteIterator) void {
+        if (self.value) |iterator| {
+            c.git_note_iterator_free(iterator);
+        }
+    }
 };
 
-// TODO: Implement high-level convenience functions for slice relationships
-
-// TODO: Function to create slice parent note
-// Creates a git note recording the parent relationship for a slice
-// pub fn createSliceParentNote(
-//     repo: GitRepository,
-//     slice_commit: GitOid,
-//     parent_branch: []const u8,
-//     signature: GitSignature,
-// ) !void {
-//     // Format note content as "slice-parent: <parent_branch>"
-//     // Use GitNote.create() with proper error handling
-//     // Log success/failure for debugging
-// }
-
-// TODO: Function to read slice parent from note
-// Reads git note and extracts slice parent information
-// pub fn readSliceParentNote(
-//     repo: GitRepository,
-//     slice_commit: GitOid,
-//     alloc: std.mem.Allocator,
-// ) !?[]const u8 {
-//     // Use GitNote.read() to get note
-//     // Parse content to extract parent information
-//     // Return allocated string (caller owns memory) or null if no parent note
-// }
-
-// TODO: Function to update slice parent note
-// Updates existing slice parent note with new information
-// pub fn updateSliceParentNote(
-//     repo: GitRepository,
-//     slice_commit: GitOid,
-//     new_parent_branch: []const u8,
-//     signature: GitSignature,
-// ) !void {
-//     // Read existing note, update content, save back
-//     // Handle case where note doesn't exist (create new)
-// }
-
-// TODO: Function to find all slices with parent notes
-// Returns list of commits that have slice parent notes in a repository
-// pub fn findSlicesWithParentNotes(
-//     repo: GitRepository,
-//     alloc: std.mem.Allocator,
-// ) ![]GitOid {
-//     // Use GitNoteIterator to iterate through all notes
-//     // Filter for notes that contain slice parent information
-//     // Return array of commit IDs (caller owns memory)
-// }
-
-// TODO: Function to verify note integrity
-// Checks if slice parent notes are consistent with actual branch structure
-// pub fn verifySliceParentNotes(
-//     repo: GitRepository,
-//     alloc: std.mem.Allocator,
-// ) !struct { valid: usize, invalid: usize, missing: usize } {
-//     // Iterate through all slice branches
-//     // Check if parent notes exist and are valid
-//     // Compare with reflog information where available
-//     // Return statistics about note integrity
-// }
-
-// TODO: Helper function to format slice parent note content
-// Creates properly formatted note content for slice parent relationships
-// fn formatSliceParentNote(alloc: std.mem.Allocator, parent_branch: []const u8) ![]u8 {
-//     // Format as "slice-parent: <parent_branch>"
-//     // Handle various parent formats (full refs, branch names, "main", etc.)
-//     // Return allocated string (caller owns memory)
-// }
-
-// TODO: Helper function to parse slice parent note content
-// Extracts parent branch name from note content
-// fn parseSliceParentNote(note_content: []const u8) ?[]const u8 {
-//     // Look for "slice-parent: " prefix
-//     // Extract and return parent branch name
-//     // Return null if not a valid slice parent note
-// }
-
-// TODO: Error handling improvements
-// All functions should handle common git notes errors gracefully:
-// - GIT_ENOTFOUND: Note doesn't exist (return null, don't error)
-// - GIT_EEXISTS: Note already exists (update instead of create)
-// - GIT_EUNMERGED: Repository has unmerged changes
-// - Permission errors: Graceful degradation
-// - Memory allocation errors: Proper cleanup
-
-// TODO: Integration with existing sparse codebase
-// This module should integrate with:
-// - Feature.activate(): Add note creation when creating slices
-// - Slice.constructLinks(): Use notes as primary source, reflog as fallback
-// - sparse.status(): Display relationships from notes
-// - Error handling: Use sparse.zig Error types
-// - Logging: Use consistent log scoping
-// - Memory management: Follow existing patterns
-
-// TODO: Performance considerations
-// - Cache note content to avoid repeated libgit2 calls
-// - Batch note operations where possible
-// - Consider note compression for large repositories
-// - Implement lazy loading of note content
-
-// TODO: Team collaboration features
-// Functions to help with git notes synchronization:
-// - Check if notes are in sync with remote
-// - Warn about unsynchronized notes
-// - Provide guidance for pushing/fetching notes
-// - Handle note conflicts gracefully
-
-// TODO: Testing requirements
-// This module needs comprehensive tests for:
-// - Note creation, reading, updating, deletion
-// - Error handling for all edge cases
-// - Integration with slice relationship detection
-// - Performance with large numbers of notes
-// - Compatibility with different git versions
-// - Team collaboration scenarios (push/fetch notes)
-
-// TODO: Documentation requirements
-// - API documentation for all public functions
-// - Integration guide for existing sparse commands
-// - Team collaboration setup instructions
-// - Troubleshooting guide for note-related issues
-// - Migration guide from reflog-based relationships
+test {
+    std.testing.refAllDecls(@This());
+}

@@ -152,7 +152,10 @@ pub fn slice(o: struct { slice_name: ?[]const u8 }) !void {
     if (current_feature) |*cf| {
         if (cf.slices) |slices| {
             if (slices.items.len == 0) {
-                log.warn("slice:: current_feature('{s}') doesnt have any slices, this is unexpected will try to create a slice anyways", .{current_feature.?.name});
+                log.warn(
+                    "slice:: current_feature('{s}') doesnt have any slices, this is unexpected will try to create a slice anyways",
+                    .{current_feature.?.name},
+                );
             }
             const leaves = try Slice.leafNodes(.{ .alloc = allocator, .slice_pool = slices.items });
             defer allocator.free(leaves);
@@ -190,10 +193,16 @@ pub fn slice(o: struct { slice_name: ?[]const u8 }) !void {
                 .start_point = start_point,
             });
         } else {
-            log.warn("slice:: current_feature('{s}') doesnt have any slices, this is unexpected will try to create a slice anyways", .{current_feature.?.name});
+            log.warn(
+                "slice:: current_feature('{s}') doesnt have any slices, this is unexpected will try to create a slice anyways",
+                .{current_feature.?.name},
+            );
         }
     } else {
-        log.err("slice:: couldn't find current feature, cannot execute slice commands outside of a feature, make sure you have commits in the repository", .{});
+        log.err(
+            "slice:: couldn't find current feature, cannot execute slice commands outside of a feature, make sure you have commits in the repository",
+            .{},
+        );
         return Error.UNABLE_TO_DETECT_CURRENT_FEATURE;
     }
 }

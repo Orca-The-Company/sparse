@@ -255,20 +255,20 @@ pub fn activate(self: *Feature, o: struct {
         // Determine the parent branch for the git note
         // TODO: Use SparseConfig.default_base_branch as fallback when start_point is not provided
         const parent_branch = if (o.start_point) |sp| sp else "main";
-        
+
         // Create a slice object to use its createParentNote method
         const repo = LibGit.GitRepository.open() catch |err| {
             log.warn("[activate]:: Failed to open repository for git notes: {}", .{err});
             return; // Don't fail slice creation if notes fail
         };
         defer repo.free();
-        
+
         const ref = LibGit.GitReference.lookup(repo, slice_name) catch |err| {
             log.warn("[activate]:: Failed to lookup newly created slice branch for git notes: {}", .{err});
             return; // Don't fail slice creation if notes fail
         };
         defer ref.free();
-        
+
         var slice = Slice{
             .repo = repo,
             .ref = ref,
@@ -277,7 +277,7 @@ pub fn activate(self: *Feature, o: struct {
         // Note: slice is stack-allocated and holds references to repo/ref which are freed 
         // at the end of this scope via defer statements above
         defer slice._is_merge_into_map.deinit();
-        
+
         // Create the parent note for this slice
         slice.createParentNote(parent_branch, o.allocator) catch |err| {
             log.warn("[activate]:: Failed to create parent note for slice {s}: {}", .{ slice_name, err });

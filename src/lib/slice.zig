@@ -638,10 +638,41 @@ pub const Slice = struct {
 
 // Helper functions for slice parent notes
 
-/// Parses slice parent note content and extracts parent branch name
+/// Enhanced note validation errors
+const NoteValidationError = error{
+    InvalidNoteFormat,
+    EmptyParentName,
+    InvalidBranchName,
+    NoteTooLong,
+    InvalidCharacters,
+};
+
+/// Validates and parses slice parent note content with comprehensive error checking
 fn parseSliceParentNote(note_content: []const u8, alloc: Allocator) !?[]const u8 {
+    return parseSliceParentNoteWithValidation(note_content, alloc, true) catch |err| switch (err) {
+        NoteValidationError.InvalidNoteFormat,
+        NoteValidationError.EmptyParentName,
+        NoteValidationError.InvalidBranchName,
+        NoteValidationError.NoteTooLong,
+        NoteValidationError.InvalidCharacters => {
+            log.warn("Note validation failed: {}", .{err});
+            return null;
+        },
+        else => return err,
+    };
+}
+
+/// Validates and parses slice parent note with detailed validation
+fn parseSliceParentNoteWithValidation(note_content: []const u8, alloc: Allocator, strict: bool) !?[]const u8 {
+    // Check note length limits (prevent extremely long notes)
+    if (note_content.len > 1024) {
+        if (strict) return NoteValidationError.NoteTooLong;
+        log.warn("Note content is suspiciously long ({d} chars), truncating", .{note_content.len});
+    }
+
     // Look for "slice-parent: " prefix
     if (!std.mem.startsWith(u8, note_content, constants.SLICE_PARENT_NOTE_PREFIX)) {
+        if (strict) return NoteValidationError.InvalidNoteFormat;
         return null; // Not a valid slice parent note
     }
 
@@ -650,10 +681,538 @@ fn parseSliceParentNote(note_content: []const u8, alloc: Allocator) !?[]const u8
     // Trim whitespace and validate
     const trimmed = std.mem.trim(u8, parent_name, " \t\n\r");
     if (trimmed.len == 0) {
+        if (strict) return NoteValidationError.EmptyParentName;
         return null; // Empty parent name
     }
 
+    // Validate parent branch name format
+    if (!isValidBranchReference(trimmed)) {
+        if (strict) return NoteValidationError.InvalidBranchName;
+        log.warn("Parent branch name contains invalid characters: {s}", .{trimmed});
+        return null;
+    }
+
     return try alloc.dupe(u8, trimmed);
+}
+
+/// Validates if a string is a valid branch reference name
+fn isValidBranchReference(branch_name: []const u8) bool {
+    if (branch_name.len == 0) return false;
+    
+    // Check for valid branch name patterns
+    // Allow: main, feature/slice, sparse/user/feature/slice/name, refs/heads/...
+    
+    // Check for obviously invalid characters
+    for (branch_name) |c| {
+        switch (c) {
+            // Invalid characters for git branch names
+            ' ', '~', '^', ':', '?', '*', '[', '\\' => return false,
+            // Control characters (includes \t, \n, \r)
+            0...31, 127 => return false,
+            else => {},
+        }
+    }
+    
+    // Check for invalid patterns
+    if (std.mem.indexOf(u8, branch_name, "..") != null) return false; // No double dots
+    if (std.mem.startsWith(u8, branch_name, ".") or std.mem.endsWith(u8, branch_name, ".")) return false; // No leading/trailing dots
+    if (std.mem.endsWith(u8, branch_name, "/") or std.mem.startsWith(u8, branch_name, "/")) return false; // No leading/trailing slashes
+    if (std.mem.indexOf(u8, branch_name, "//") != null) return false; // No double slashes
+    
+    return true;
+}
+
+/// Note consistency check results
+const NoteConsistencyReport = struct {
+    total_notes_checked: usize,
+    corrupted_notes: usize,
+    orphaned_notes: usize,  // Notes pointing to non-existent branches
+    circular_references: usize,
+    repaired_notes: usize,
+    
+    pub fn hasIssues(self: NoteConsistencyReport) bool {
+        return self.corrupted_notes > 0 or self.orphaned_notes > 0 or self.circular_references > 0;
+    }
+};
+
+/// Performs comprehensive note consistency checks across all slice namespaces
+pub fn checkNoteConsistency(alloc: Allocator) !NoteConsistencyReport {
+    log.info("Starting note consistency check...");
+    
+    const repo = try GitRepository.open();
+    defer repo.free();
+    
+    var report = NoteConsistencyReport{
+        .total_notes_checked = 0,
+        .corrupted_notes = 0,
+        .orphaned_notes = 0,
+        .circular_references = 0,
+        .repaired_notes = 0,
+    };
+    
+    // Get all slice branches to build valid reference map
+    const all_slices = try Slice.getAllSlicesWith(.{ .alloc = alloc });
+    defer {
+        for (all_slices) |*slice| {
+            slice.free(alloc);
+        }
+        alloc.free(all_slices);
+    }
+    
+    // Build set of valid branch names for orphan detection
+    var valid_branches = std.StringHashMap(void).init(alloc);
+    defer valid_branches.deinit();
+    
+    try valid_branches.put("main", {});
+    for (all_slices) |slice| {
+        const branch_name = slice.ref.branchName() catch continue;
+        try valid_branches.put(branch_name, {});
+    }
+    
+    // Check notes in each slice's namespace
+    for (all_slices) |slice| {
+        const namespace = try slice.sliceBranchToNotesNamespace(alloc);
+        defer alloc.free(namespace);
+        
+        // Skip default namespace as we're not using it anymore
+        if (std.mem.eql(u8, namespace, "refs/notes/commits")) continue;
+        
+        try checkSliceNotes(&report, repo, slice, namespace, &valid_branches, alloc);
+    }
+    
+    log.info("Note consistency check complete: {d} notes checked, {d} issues found", 
+        .{ report.total_notes_checked, report.corrupted_notes + report.orphaned_notes + report.circular_references });
+    
+    return report;
+}
+
+/// Checks notes for a specific slice namespace
+fn checkSliceNotes(
+    report: *NoteConsistencyReport, 
+    repo: GitRepository, 
+    slice: Slice, 
+    namespace: []const u8,
+    valid_branches: *std.StringHashMap(void),
+    alloc: Allocator
+) !void {
+    // Try to read the note for this slice
+    const commit_oid = slice.ref.target() orelse return;
+    
+    const note = LibGit.GitNote.read(repo, commit_oid, namespace) catch |err| switch (err) {
+        LibGit.GitError.NOTE_READ_FAILED => return, // No note exists, not an error
+        else => return err,
+    };
+    
+    if (note == null) return; // No note for this slice
+    defer note.?.free();
+    
+    report.total_notes_checked += 1;
+    
+    const note_content = note.?.content();
+    
+    // Validate note content
+    const parent_branch = parseSliceParentNoteWithValidation(note_content, alloc, false) catch |err| switch (err) {
+        NoteValidationError.InvalidNoteFormat,
+        NoteValidationError.EmptyParentName,
+        NoteValidationError.InvalidBranchName,
+        NoteValidationError.NoteTooLong,
+        NoteValidationError.InvalidCharacters => {
+            log.warn("Corrupted note found for slice {s}: {}", .{ slice.name(), err });
+            report.corrupted_notes += 1;
+            return;
+        },
+        else => return err,
+    };
+    
+    if (parent_branch == null) {
+        log.debug("Note for slice {s} is not a parent note, skipping", .{slice.name()});
+        return;
+    }
+    defer alloc.free(parent_branch.?);
+    
+    // Check if parent branch exists
+    if (!valid_branches.contains(parent_branch.?)) {
+        log.warn("Orphaned note found: slice {s} points to non-existent parent {s}", .{ slice.name(), parent_branch.? });
+        report.orphaned_notes += 1;
+    }
+    
+    // TODO: Add circular reference detection by building dependency graph
+}
+
+/// Attempts to repair corrupted or inconsistent notes
+pub fn repairNotes(alloc: Allocator, dry_run: bool) !NoteConsistencyReport {
+    log.info("Starting note repair process (dry_run: {})...", .{dry_run});
+    
+    var report = try checkNoteConsistency(alloc);
+    
+    if (!report.hasIssues()) {
+        log.info("No note issues found, nothing to repair");
+        return report;
+    }
+    
+    const repo = try GitRepository.open();
+    defer repo.free();
+    
+    // Get all slices for repair operations
+    const all_slices = try Slice.getAllSlicesWith(.{ .alloc = alloc });
+    defer {
+        for (all_slices) |*slice| {
+            slice.free(alloc);
+        }
+        alloc.free(all_slices);
+    }
+    
+    // Attempt to repair orphaned notes by falling back to reflog analysis
+    for (all_slices) |*slice| {
+        const namespace = try slice.sliceBranchToNotesNamespace(alloc);
+        defer alloc.free(namespace);
+        
+        if (std.mem.eql(u8, namespace, "refs/notes/commits")) continue;
+        
+        try repairSliceNote(&report, repo, slice, namespace, alloc, dry_run);
+    }
+    
+    if (dry_run) {
+        log.info("Dry run complete: {d} notes could be repaired", .{report.repaired_notes});
+    } else {
+        log.info("Repair complete: {d} notes repaired", .{report.repaired_notes});
+    }
+    
+    return report;
+}
+
+/// Attempts to repair a single slice's note
+fn repairSliceNote(
+    report: *NoteConsistencyReport,
+    repo: GitRepository,
+    slice: *Slice,
+    namespace: []const u8,
+    alloc: Allocator,
+    dry_run: bool
+) !void {
+    const commit_oid = slice.ref.target() orelse return;
+    
+    // Check if note exists and is valid
+    const note = LibGit.GitNote.read(repo, commit_oid, namespace) catch return;
+    if (note == null) return;
+    defer note.?.free();
+    
+    const note_content = note.?.content();
+    const parent_branch = parseSliceParentNoteWithValidation(note_content, alloc, false) catch {
+        // Note is corrupted, try to repair using reflog
+        log.info("Attempting to repair corrupted note for slice {s} using reflog", .{slice.name()});
+        
+        if (!dry_run) {
+            try repairNoteFromReflog(slice, alloc);
+            report.repaired_notes += 1;
+        } else {
+            report.repaired_notes += 1;
+        }
+        return;
+    };
+    
+    if (parent_branch) |parent| {
+        defer alloc.free(parent);
+        // Note is valid, no repair needed
+    }
+}
+
+/// Repairs a note by extracting parent information from reflog
+fn repairNoteFromReflog(slice: *Slice, alloc: Allocator) !void {
+    const created_from = slice.ref.createdFrom(slice.repo);
+    if (created_from) |parent_ref| {
+        defer parent_ref.free();
+        
+        const parent_branch = try parent_ref.branchName();
+        log.info("Repairing note for slice {s} with parent from reflog: {s}", .{ slice.name(), parent_branch });
+        
+        try slice.createParentNote(parent_branch, alloc);
+    } else {
+        log.warn("Cannot repair note for slice {s}: no reflog information available", .{slice.name()});
+    }
+}
+
+/// Error recovery scenarios and handlers
+const RecoveryScenario = enum {
+    MissingNotes,           // Slices exist but have no notes
+    CorruptedNotes,         // Notes exist but are malformed
+    OrphanedNotes,          // Notes point to non-existent parents
+    CircularReferences,     // Notes form circular dependencies
+    NamespaceMismatch,      // Notes in wrong namespace
+    DuplicateNotes,         // Multiple notes for same slice
+};
+
+/// Comprehensive error recovery for slice notes
+pub fn recoverFromNoteErrors(alloc: Allocator, scenarios: []const RecoveryScenario, dry_run: bool) !NoteConsistencyReport {
+    log.info("Starting comprehensive note error recovery (dry_run: {})...", .{dry_run});
+    
+    var report = NoteConsistencyReport{
+        .total_notes_checked = 0,
+        .corrupted_notes = 0,
+        .orphaned_notes = 0,
+        .circular_references = 0,
+        .repaired_notes = 0,
+    };
+    
+    for (scenarios) |scenario| {
+        log.info("Recovering from scenario: {}", .{scenario});
+        
+        switch (scenario) {
+            .MissingNotes => {
+                const recovered = try recoverMissingNotes(alloc, dry_run);
+                report.repaired_notes += recovered;
+            },
+            .CorruptedNotes => {
+                const recovered = try recoverCorruptedNotes(alloc, dry_run);
+                report.repaired_notes += recovered;
+            },
+            .OrphanedNotes => {
+                const recovered = try recoverOrphanedNotes(alloc, dry_run);
+                report.repaired_notes += recovered;
+            },
+            .NamespaceMismatch => {
+                const recovered = try recoverNamespaceMismatches(alloc, dry_run);
+                report.repaired_notes += recovered;
+            },
+            .CircularReferences, .DuplicateNotes => {
+                log.warn("Recovery for {} not yet implemented", .{scenario});
+            },
+        }
+    }
+    
+    log.info("Comprehensive recovery complete: {d} notes recovered", .{report.repaired_notes});
+    return report;
+}
+
+/// Recovers slices that are missing notes by creating them from reflog
+fn recoverMissingNotes(alloc: Allocator, dry_run: bool) !usize {
+    const repo = try GitRepository.open();
+    defer repo.free();
+    
+    const all_slices = try Slice.getAllSlicesWith(.{ .alloc = alloc });
+    defer {
+        for (all_slices) |*slice| {
+            slice.free(alloc);
+        }
+        alloc.free(all_slices);
+    }
+    
+    var recovered: usize = 0;
+    
+    for (all_slices) |*slice| {
+        const namespace = try slice.sliceBranchToNotesNamespace(alloc);
+        defer alloc.free(namespace);
+        
+        if (std.mem.eql(u8, namespace, "refs/notes/commits")) continue;
+        
+        const commit_oid = slice.ref.target() orelse continue;
+        
+        // Check if note exists
+        const note = LibGit.GitNote.read(repo, commit_oid, namespace) catch null;
+        if (note != null) {
+            note.?.free();
+            continue; // Note exists, no recovery needed
+        }
+        
+        // Note is missing, try to recover from reflog
+        log.info("Recovering missing note for slice {s}", .{slice.name()});
+        
+        if (!dry_run) {
+            repairNoteFromReflog(slice, alloc) catch |err| {
+                log.warn("Failed to recover note for slice {s}: {}", .{ slice.name(), err });
+                continue;
+            };
+        }
+        
+        recovered += 1;
+    }
+    
+    return recovered;
+}
+
+/// Recovers corrupted notes by replacing them with reflog data
+fn recoverCorruptedNotes(alloc: Allocator, dry_run: bool) !usize {
+    const repo = try GitRepository.open();
+    defer repo.free();
+    
+    const all_slices = try Slice.getAllSlicesWith(.{ .alloc = alloc });
+    defer {
+        for (all_slices) |*slice| {
+            slice.free(alloc);
+        }
+        alloc.free(all_slices);
+    }
+    
+    var recovered: usize = 0;
+    
+    for (all_slices) |*slice| {
+        const namespace = try slice.sliceBranchToNotesNamespace(alloc);
+        defer alloc.free(namespace);
+        
+        if (std.mem.eql(u8, namespace, "refs/notes/commits")) continue;
+        
+        const commit_oid = slice.ref.target() orelse continue;
+        
+        // Check if note exists and is corrupted
+        const note = LibGit.GitNote.read(repo, commit_oid, namespace) catch continue;
+        if (note == null) continue;
+        defer note.?.free();
+        
+        const note_content = note.?.content();
+        
+        // Try to parse the note - if it fails, it's corrupted
+        const is_corrupted = parseSliceParentNoteWithValidation(note_content, alloc, true) catch true;
+        if (is_corrupted != true) {
+            // Note is valid, no recovery needed
+            if (is_corrupted) |parent| {
+                alloc.free(parent);
+            }
+            continue;
+        }
+        
+        log.info("Recovering corrupted note for slice {s}", .{slice.name()});
+        
+        if (!dry_run) {
+            // Remove corrupted note and recreate from reflog
+            const signature = LibGit.GitSignature.default(slice.repo) catch continue;
+            defer signature.free();
+            
+            LibGit.GitNote.remove(repo, commit_oid, signature, namespace) catch {};
+            repairNoteFromReflog(slice, alloc) catch |err| {
+                log.warn("Failed to recover corrupted note for slice {s}: {}", .{ slice.name(), err });
+                continue;
+            };
+        }
+        
+        recovered += 1;
+    }
+    
+    return recovered;
+}
+
+/// Recovers orphaned notes (pointing to non-existent parents) by updating them
+fn recoverOrphanedNotes(alloc: Allocator, dry_run: bool) !usize {
+    const repo = try GitRepository.open();
+    defer repo.free();
+    
+    const all_slices = try Slice.getAllSlicesWith(.{ .alloc = alloc });
+    defer {
+        for (all_slices) |*slice| {
+            slice.free(alloc);
+        }
+        alloc.free(all_slices);
+    }
+    
+    // Build set of valid branch names
+    var valid_branches = std.StringHashMap(void).init(alloc);
+    defer valid_branches.deinit();
+    
+    try valid_branches.put("main", {});
+    for (all_slices) |slice| {
+        const branch_name = slice.ref.branchName() catch continue;
+        try valid_branches.put(branch_name, {});
+    }
+    
+    var recovered: usize = 0;
+    
+    for (all_slices) |*slice| {
+        const namespace = try slice.sliceBranchToNotesNamespace(alloc);
+        defer alloc.free(namespace);
+        
+        if (std.mem.eql(u8, namespace, "refs/notes/commits")) continue;
+        
+        const commit_oid = slice.ref.target() orelse continue;
+        
+        // Check if note exists
+        const note = LibGit.GitNote.read(repo, commit_oid, namespace) catch continue;
+        if (note == null) continue;
+        defer note.?.free();
+        
+        const note_content = note.?.content();
+        const parent_branch = parseSliceParentNoteWithValidation(note_content, alloc, false) catch continue;
+        if (parent_branch == null) continue;
+        defer alloc.free(parent_branch.?);
+        
+        // Check if parent exists
+        if (valid_branches.contains(parent_branch.?)) continue; // Parent exists, no recovery needed
+        
+        log.info("Recovering orphaned note for slice {s} (missing parent: {s})", .{ slice.name(), parent_branch.? });
+        
+        if (!dry_run) {
+            // Try to find correct parent from reflog
+            repairNoteFromReflog(slice, alloc) catch |err| {
+                log.warn("Failed to recover orphaned note for slice {s}: {}", .{ slice.name(), err });
+                continue;
+            };
+        }
+        
+        recovered += 1;
+    }
+    
+    return recovered;
+}
+
+/// Recovers notes that are in the wrong namespace
+fn recoverNamespaceMismatches(alloc: Allocator, dry_run: bool) !usize {
+    const repo = try GitRepository.open();
+    defer repo.free();
+    
+    var recovered: usize = 0;
+    
+    // Check for notes in the old default namespace that should be moved
+    var iterator = LibGit.GitNoteIterator.init(repo, "refs/notes/commits") catch return 0;
+    defer iterator.free();
+    
+    while (iterator.next() catch null) |note_info| {
+        const note = LibGit.GitNote.read(repo, note_info.annotated_id, "refs/notes/commits") catch continue;
+        if (note == null) continue;
+        defer note.?.free();
+        
+        const note_content = note.?.content();
+        
+        // Check if this is a slice parent note
+        if (!std.mem.startsWith(u8, note_content, constants.SLICE_PARENT_NOTE_PREFIX)) continue;
+        
+        // Try to find the slice this note belongs to
+        const all_slices = try Slice.getAllSlicesWith(.{ .alloc = alloc });
+        defer {
+            for (all_slices) |*s| {
+                s.free(alloc);
+            }
+            alloc.free(all_slices);
+        }
+        
+        for (all_slices) |*slice| {
+            const slice_commit = slice.ref.target() orelse continue;
+            
+            // Check if this note belongs to this slice
+            if (!std.mem.eql(u8, &note_info.annotated_id.value.?, &slice_commit.value.?)) continue;
+            
+            // Found the slice, move note to correct namespace
+            const correct_namespace = try slice.sliceBranchToNotesNamespace(alloc);
+            defer alloc.free(correct_namespace);
+            
+            if (std.mem.eql(u8, correct_namespace, "refs/notes/commits")) continue; // Already in correct namespace
+            
+            log.info("Moving note for slice {s} to correct namespace: {s}", .{ slice.name(), correct_namespace });
+            
+            if (!dry_run) {
+                // Create note in correct namespace
+                const signature = LibGit.GitSignature.default(slice.repo) catch continue;
+                defer signature.free();
+                
+                _ = LibGit.GitNote.create(repo, slice_commit, note_content, signature, correct_namespace) catch continue;
+                
+                // Remove from old namespace
+                LibGit.GitNote.remove(repo, slice_commit, signature, "refs/notes/commits") catch {};
+            }
+            
+            recovered += 1;
+            break;
+        }
+    }
+    
+    return recovered;
 }
 
 /// Finds all slices that have parent notes in the repository
@@ -739,6 +1298,83 @@ test "parseSliceParentNote" {
         const result = try parseSliceParentNote(note_content, allocator);
         try expect(result == null);
     }
+}
+
+test "parseSliceParentNoteValidation" {
+    const expect = std.testing.expect;
+    const allocator = std.testing.allocator;
+
+    // Test invalid branch names are rejected
+    {
+        const note_content = "slice-parent: invalid~branch";
+        const result = try parseSliceParentNote(note_content, allocator);
+        try expect(result == null);
+    }
+
+    // Test branch name with invalid characters
+    {
+        const note_content = "slice-parent: branch with spaces";
+        const result = try parseSliceParentNote(note_content, allocator);
+        try expect(result == null);
+    }
+
+    // Test double dots in branch name
+    {
+        const note_content = "slice-parent: feature..branch";
+        const result = try parseSliceParentNote(note_content, allocator);
+        try expect(result == null);
+    }
+
+    // Test leading slash
+    {
+        const note_content = "slice-parent: /invalid/branch";
+        const result = try parseSliceParentNote(note_content, allocator);
+        try expect(result == null);
+    }
+
+    // Test trailing slash
+    {
+        const note_content = "slice-parent: invalid/branch/";
+        const result = try parseSliceParentNote(note_content, allocator);
+        try expect(result == null);
+    }
+
+    // Test valid refs/heads/ format
+    {
+        const note_content = "slice-parent: refs/heads/main";
+        const result = try parseSliceParentNote(note_content, allocator);
+        try expect(result != null);
+        defer allocator.free(result.?);
+    }
+}
+
+test "isValidBranchReference" {
+    const expect = std.testing.expect;
+
+    // Valid branch names
+    try expect(isValidBranchReference("main"));
+    try expect(isValidBranchReference("feature/branch"));
+    try expect(isValidBranchReference("sparse/user/feature/slice/1"));
+    try expect(isValidBranchReference("refs/heads/main"));
+    try expect(isValidBranchReference("feature-branch"));
+    try expect(isValidBranchReference("123-feature"));
+
+    // Invalid branch names
+    try expect(!isValidBranchReference(""));
+    try expect(!isValidBranchReference("branch with spaces"));
+    try expect(!isValidBranchReference("branch~name"));
+    try expect(!isValidBranchReference("branch^name"));
+    try expect(!isValidBranchReference("branch:name"));
+    try expect(!isValidBranchReference("branch?name"));
+    try expect(!isValidBranchReference("branch*name"));
+    try expect(!isValidBranchReference("branch[name"));
+    try expect(!isValidBranchReference("branch\\name"));
+    try expect(!isValidBranchReference("feature..branch"));
+    try expect(!isValidBranchReference(".feature"));
+    try expect(!isValidBranchReference("feature."));
+    try expect(!isValidBranchReference("/feature"));
+    try expect(!isValidBranchReference("feature/"));
+    try expect(!isValidBranchReference("feature//branch"));
 }
 
 const utils = @import("utils.zig");

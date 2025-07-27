@@ -732,11 +732,10 @@ fn handleUpdateInProgress(alloc: std.mem.Allocator, state: *State.Update) !void 
                 
                 // Push git notes after successfully pushing slices
                 if (pushed_any_slice) {
-                    const stdout_writer = std.io.getStdOut().writer();
-                    try stdout_writer.print("📝 Pushing git notes to preserve slice relationships...\n", .{});
+                    try stdout.print("📝 Pushing git notes to preserve slice relationships...\n", .{});
                     leaves[0].pushNotes(alloc) catch |err| {
-                        try stdout_writer.print("⚠️  Warning: Failed to push git notes: {}\n", .{err});
-                        try stdout_writer.print("   Run 'git push origin refs/notes/commits' manually to share slice relationships\n", .{});
+                        try stdout.print("⚠️  Warning: Failed to push git notes: {}\n", .{err});
+                        try stdout.print("   Run 'git push origin refs/notes/commits' manually to share slice relationships\n", .{});
                     };
                 }
                 

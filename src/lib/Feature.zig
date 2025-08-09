@@ -274,7 +274,7 @@ pub fn activate(self: *Feature, o: struct {
             .ref = ref,
             ._is_merge_into_map = std.StringHashMap(bool).init(o.allocator),
         };
-        // Note: slice is stack-allocated and holds references to repo/ref which are freed 
+        // Note: slice is stack-allocated and holds references to repo/ref which are freed
         // at the end of this scope via defer statements above
         defer slice._is_merge_into_map.deinit();
 

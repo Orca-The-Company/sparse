@@ -1,0 +1,57 @@
+From 0a40058a7180f6bd9a45c9df4e18f01b0f49a96b Mon Sep 17 00:00:00 2001
+From: Talha Can Havadar <havadartalha@gmail.com>
+Date: Sun, 10 Aug 2025 14:33:51 +0200
+Subject: [PATCH] temp: apply nix patches for proper patch generation
+
+---
+ build.zig                  |  4 ++--
+ vendored/libgit2/build.zig | 10 +++++-----
+ 2 files changed, 7 insertions(+), 7 deletions(-)
+
+diff --git a/build.zig b/build.zig
+index edb804a..b8e0076 100644
+--- a/build.zig
++++ b/build.zig
+@@ -45,8 +45,8 @@ pub fn build(b: *std.Build) !void {
+ 
+     switch (target.result.os.tag) {
+         .driverkit, .ios, .macos, .tvos, .visionos, .watchos => {
+-            const apple_sdk = @import("apple_sdk");
+-            try apple_sdk.addPaths(b, lib);
++            // const apple_sdk = @import("apple_sdk");
++            // try apple_sdk.addPaths(b, lib);
+         },
+         .linux => {},
+         else => @panic("target platform is not supported"),
+diff --git a/vendored/libgit2/build.zig b/vendored/libgit2/build.zig
+index 4634252..9388d30 100644
+--- a/vendored/libgit2/build.zig
++++ b/vendored/libgit2/build.zig
+@@ -46,11 +46,11 @@ pub fn build(b: *std.Build) !void {
+     // default on APPLE targets
+     switch (target.result.os.tag) {
+         .driverkit, .ios, .macos, .tvos, .visionos, .watchos => {
+-            const apple_sdk = @import("apple_sdk");
+-            try apple_sdk.addPaths(b, lib);
+-            lib.linkSystemLibrary("iconv");
++            // const apple_sdk = @import("apple_sdk");
++            // try apple_sdk.addPaths(b, lib);
++            // lib.linkSystemLibrary("iconv");
+             features.addValues(.{
+-                .GIT_USE_ICONV = 1,
++                // .GIT_USE_ICONV = 1,
+                 .GIT_USE_STAT_MTIMESPEC = 1,
+                 .GIT_REGEX_REGCOMP_L = 1,
+                 .GIT_QSORT_BSD = 1,
+@@ -89,7 +89,7 @@ pub fn build(b: *std.Build) !void {
+         TlsBackend,
+         "tls-backend",
+         "Choose Unix TLS/SSL backend (default is mbedtls)",
+-    ) orelse if (target.result.os.tag == .macos) .securetransport else .mbedtls;
++    ) orelse .mbedtls;
+ 
+     if (target.result.os.tag == .windows) {
+         lib.linkSystemLibrary("winhttp");
+-- 
+2.50.1
+

@@ -57,6 +57,37 @@ pub fn target(self: Feature, alloc: Allocator) !?GitReference {
         log.err("target:: feature('{s}') has more than 1 orphan slices({d})", .{ self.name, leaves.len });
         return SparseError.RECOVERABLE_ORPHAN_SLICES_IN_FEATURE;
     }
+
+    // For single-leaf features, prioritize git notes over reflog
+    if (leaves.len == 1) {
+        const leaf_slice = leaves[0];
+
+        // Try to get target from git notes first
+        if (leaf_slice.getParentFromNotes(alloc)) |maybe_parent_branch| {
+            if (maybe_parent_branch) |parent_branch| {
+                defer alloc.free(parent_branch);
+                log.debug("target:: Using git note parent for single-leaf feature: {s}", .{parent_branch});
+
+                // Convert branch name to GitReference
+                const full_ref_name = if (!std.mem.startsWith(u8, parent_branch, "refs/heads/"))
+                    try std.fmt.allocPrint(alloc, "refs/heads/{s}", .{parent_branch})
+                else
+                    try alloc.dupe(u8, parent_branch);
+                defer alloc.free(full_ref_name);
+
+                // Use the repository from the slice itself
+                return LibGit.GitReference.lookup(leaf_slice.repo, full_ref_name) catch |err| {
+                    log.warn("target:: Could not find git note parent ref '{s}', falling back to reflog: {}", .{ full_ref_name, err });
+                    // Fall through to reflog method
+                    return leaf_slice.ref.createdFrom(leaf_slice.repo);
+                };
+            }
+        } else |err| {
+            log.debug("target:: Failed to get parent from notes: {}, using reflog", .{err});
+        }
+    }
+
+    // Original logic for multiple leaves or when notes aren't available
     var root_slice: ?*Slice = leaves[0];
     // find the root slice
     while (root_slice != null and root_slice.?.target != null) : (root_slice = root_slice.?.target) {}

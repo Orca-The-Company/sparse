@@ -55,13 +55,9 @@ fn parse(args: [][:0]u8) !Command {
     return CommandError.UnknownCommand;
 }
 
-pub fn run() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer std.debug.assert(gpa.deinit() == .ok);
-
-    const allocator = gpa.allocator();
-    const args = try std.process.argsAlloc(allocator);
-    defer std.process.argsFree(allocator, args);
+pub fn run(alloc: Allocator) !void {
+    const args = try std.process.argsAlloc(alloc);
+    defer std.process.argsFree(alloc, args);
 
     const command = parse(args) catch |err| switch (err) {
         CommandError.UnknownCommand => {
@@ -83,7 +79,7 @@ pub fn run() !void {
         },
         else => return err,
     };
-    const return_code = try command.run(allocator);
+    const return_code = try command.run(alloc);
     std.process.exit(return_code);
 }
 

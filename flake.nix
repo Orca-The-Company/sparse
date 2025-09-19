@@ -96,7 +96,8 @@
               ${zig-nixpkgs.lib.optionalString zig-nixpkgs.stdenv.isDarwin ''
                 export NIX_LDFLAGS="-F${zig-nixpkgs.darwin.apple_sdk.frameworks.CoreFoundation}/Library/Frameworks -framework CoreFoundation -L${zig-nixpkgs.darwin.libiconv}/lib $NIX_LDFLAGS"
               ''}
-              zig build --prefix $out -Doptimize=ReleaseSafe
+              # zig build --prefix $out -Doptimize=ReleaseSafe
+              zig build --prefix $out
               runHook postBuild
             '';
 

@@ -229,15 +229,14 @@ fn createCommitOnTarget(alloc: Allocator, data: TestData) !void {
     defer alloc.free(rr_git_commit.stderr);
 }
 
+/// Attention!: this function will not be responsible to free stdout,
+/// it should be done in caller side
 fn parseGitShowRefResult(
     alloc: Allocator,
     stdout: []u8,
     feature_name: []const u8,
     user_config: []const u8,
 ) IntegrationTestError![]const u8 {
-    // Attention!: this function will not be responsible to free stdout,
-    // it should be done in caller side
-
     std.testing.log_level = .debug;
     const ref_result = std.mem.trim(u8, stdout, "\n\t \r");
 

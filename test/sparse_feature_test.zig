@@ -3,6 +3,8 @@ const build_options = @import("build_options");
 const log = std.log.scoped(.sparse_feature_test);
 const Allocator = std.mem.Allocator;
 const RunResult = std.process.Child.RunResult;
+const TEST_SPARSE_USER_ID: []const u8 = "exampleUser";
+
 pub const TestData = struct {
     repo_dir: ?[]const u8 = null,
     feature_name: ?[]const u8 = null,
@@ -57,21 +59,31 @@ pub const SparseFeatureTest = struct {
         try std.testing.expect(!std.mem.eql(u8, rr_temp_dir.stdout, ""));
 
         data.repo_dir = try alloc.dupe(u8, std.mem.trim(u8, rr_temp_dir.stdout, "\n\t \r"));
-        const rr_git_init = try system.git(.{
-            .allocator = alloc,
-            .args = &.{ "init", "." },
-            .cwd = data.repo_dir.?,
-        });
+        {
+            const rr = try system.git(.{
+                .allocator = alloc,
+                .args = &.{ "init", "." },
+                .cwd = data.repo_dir.?,
+            });
+            defer alloc.free(rr.stdout);
+            defer alloc.free(rr.stderr);
+            try std.testing.expect(rr.term.Exited == 0);
+        }
+        {
+            const rr = try system.git(.{
+                .allocator = alloc,
+                .args = &.{ "config", "sparse.user.id", TEST_SPARSE_USER_ID },
+                .cwd = data.repo_dir.?,
+            });
+            defer alloc.free(rr.stdout);
+            defer alloc.free(rr.stderr);
+        }
+
         log.debug(
             "sparse::feature::test:: repo_dir {s}",
             .{data.repo_dir.?},
         );
-        defer alloc.free(rr_git_init.stdout);
-        defer alloc.free(rr_git_init.stderr);
 
-        try std.testing.expect(rr_git_init.term.Exited == 0);
-        try std.testing.expect(std.mem.eql(u8, rr_git_init.stderr, ""));
-        try std.testing.expect(!std.mem.eql(u8, rr_git_init.stdout, ""));
         return @as(T, data);
     }
 
@@ -111,6 +123,7 @@ pub const SparseFeatureTest = struct {
         return func(alloc, data);
     }
 };
+
 pub fn createFeatureStep(alloc: Allocator, data: TestData) IntegrationTestResult {
     std.testing.log_level = .debug;
     var test_result: IntegrationTestResult = .{
@@ -164,7 +177,7 @@ pub fn createFeatureStep(alloc: Allocator, data: TestData) IntegrationTestResult
         alloc,
         rr_git_show_ref.stdout,
         data.feature_name.?,
-        "bahanurenis@gmail.com",
+        TEST_SPARSE_USER_ID,
     ) catch |res| {
         switch (res) {
             IntegrationTestError.SPARSE_FEATURE_NOT_FOUND => test_result.feature.error_context.?.err = IntegrationTestError.SPARSE_FEATURE_NOT_FOUND,
@@ -181,6 +194,7 @@ pub fn createFeatureStep(alloc: Allocator, data: TestData) IntegrationTestResult
     }
     return test_result;
 }
+
 //test facility functions (TODO: move another module later maybe?)
 fn createCommitOnTarget(alloc: Allocator, data: TestData) !void {
     std.testing.log_level = .debug;
@@ -214,6 +228,7 @@ fn createCommitOnTarget(alloc: Allocator, data: TestData) !void {
     defer alloc.free(rr_git_commit.stdout);
     defer alloc.free(rr_git_commit.stderr);
 }
+
 fn parseGitShowRefResult(
     alloc: Allocator,
     stdout: []u8,
@@ -247,6 +262,7 @@ fn parseGitShowRefResult(
     }
     return IntegrationTestError.SPARSE_FEATURE_NOT_FOUND;
 }
+
 const sparse = @import("sparse");
 const system = @import("system.zig");
 const integration_test = @import("integration.zig");

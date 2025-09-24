@@ -1,9 +1,71 @@
 const builtin = @import("builtin");
 const std = @import("std");
-const assert = @import("std").debug.assert;
+const RunResult = std.process.Child.RunResult;
+const Allocator = std.mem.Allocator;
 const log = std.log.scoped(.integration);
-const sparse = @import("sparse");
 const build_options = @import("build_options");
+
+pub const IntegrationTestError = error{
+    TERM_EXIT_FAILED,
+    UNEXPECTED_ERROR,
+    SPARSE_FEATURE_EMPTY_REF,
+    SPARSE_FEATURE_NOT_FOUND,
+    SPARSE_FEATURE_TARGET_MISMATCH,
+};
+
+pub const IntegrationTestResult = union(enum) {
+    feature: SparseFeatureTestResult,
+    pub fn status(self: IntegrationTestResult) bool {
+        switch (self) {
+            inline else => |test_result| return test_result.status(),
+        }
+    }
+};
+
+pub const IntegrationTest = union(enum) {
+    feature: SparseFeatureTest,
+    pub fn setup(
+        self: IntegrationTest,
+        alloc: Allocator,
+        comptime T: anytype,
+    ) !T {
+        switch (self) {
+            inline else => |integration_test| return try integration_test.setup(
+                alloc,
+            ),
+        }
+    }
+
+    pub fn teardown(
+        self: IntegrationTest,
+        alloc: Allocator,
+        data: anytype,
+    ) !void {
+        switch (self) {
+            inline else => |integration_test| return integration_test.teardown(
+                alloc,
+                data,
+            ),
+        }
+    }
+
+    pub fn run(
+        self: IntegrationTest,
+        alloc: Allocator,
+        comptime T: anytype,
+        data: T,
+        comptime func: fn (Allocator, T) IntegrationTestResult,
+    ) IntegrationTestResult {
+        switch (self) {
+            inline else => |integration_test| return try integration_test.run(
+                alloc,
+                T,
+                data,
+                func,
+            ),
+        }
+    }
+};
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -12,57 +74,47 @@ pub fn main() !void {
     const args = try std.process.argsAlloc(allocator);
     defer std.process.argsFree(allocator, args);
 
-    log.debug(
-        "main:: args={s} build_options={s} output_dir={s}",
-        .{
-            args,
-            build_options.sparse_exe_path,
-            build_options.output_dir,
-        },
-    );
+    std.testing.log_level = .debug;
     const repo_dir = try std.fs.path.join(allocator, &.{ build_options.output_dir, "sparse_test_repo" });
     defer allocator.free(repo_dir);
-    {
-        const rr = try system.system(.{
-            .allocator = allocator,
-            .args = &.{
-                "mkdir",
-                "-p",
-                repo_dir,
-            },
-        });
-        defer allocator.free(rr.stdout);
-        defer allocator.free(rr.stderr);
-    }
-    {
-        const rr = try system.git(.{
-            .allocator = allocator,
-            .args = &.{ "init", "." },
-            .cwd = repo_dir,
-        });
-        defer allocator.free(rr.stdout);
-        defer allocator.free(rr.stderr);
-    }
-    {
-        const rr = try system.system(.{
-            .allocator = allocator,
-            .args = &.{
-                "rm",
-                "-r",
-                repo_dir,
-            },
-        });
-        defer allocator.free(rr.stdout);
-        defer allocator.free(rr.stderr);
-    }
 }
 
-test "Hello Integration" {
-    try std.testing.expect(false);
-}
+test "Create Sparse Feature with only feature name" {
+    const test_allocator = std.testing.allocator;
+    const args = try std.process.argsAlloc(test_allocator);
+    defer std.process.argsFree(test_allocator, args);
 
-test "Hello Integration2" {
-    try std.testing.expect(true);
+    const integration: IntegrationTest = undefined;
+    const feature_integration = @field(
+        integration,
+        "feature",
+    );
+    var data: SparseFeatureTestData = try feature_integration.setup(
+        test_allocator,
+        SparseFeatureTestData,
+    );
+    defer data.free(test_allocator);
+    // set a feature name
+    data.feature_name = "hellofeature";
+    const rr_feature_step = feature_integration.run(
+        test_allocator,
+        SparseFeatureTestData,
+        data,
+        sparse_feature_test.createFeatureStep,
+    );
+    if (!rr_feature_step.feature.status()) {
+        log.err("Test Failed with exit_code {d} {any}", .{
+            rr_feature_step.feature.exit_code,
+            rr_feature_step.feature.error_context.?.err,
+                //rr_feature_step.feature.error_context.?.err_msg.?,
+        });
+    }
+    try feature_integration.teardown(test_allocator, data);
+    try std.testing.expect(rr_feature_step.feature.exit_code == 0);
 }
 
 const system = @import("system.zig");
+const SparseFeatureTest = @import("sparse_feature_test.zig").SparseFeatureTest;
+const sparse_feature_test = @import("sparse_feature_test.zig");
+const SparseFeatureTestData = @import("sparse_feature_test.zig").TestData;
+const SparseFeatureTestResult = @import("sparse_feature_test.zig").TestResult;

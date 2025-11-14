@@ -368,14 +368,14 @@ test "asFeatureRefName" {
     const expectEqualStrings = std.testing.expectEqualStrings;
     const allocator = std.testing.allocator;
     {
-        const res = try asFeatureRefName(allocator, "refs/heads/sparse/talhaHavadar/test/slice/1");
+        const res = try asFeatureRefName(allocator, "refs/heads/sparse/bahanurenis/test/slice/1");
         defer allocator.free(res);
-        try expectEqualStrings("refs/heads/sparse/talhaHavadar/test", res);
+        try expectEqualStrings("refs/heads/sparse/bahanurenis/test", res);
     }
     {
         const res = try asFeatureRefName(allocator, "test");
         defer allocator.free(res);
-        try expectEqualStrings("refs/heads/sparse/talhaHavadar/test", res);
+        try expectEqualStrings("refs/heads/sparse/bahanurenis/test", res);
     }
 }
 

@@ -37,7 +37,9 @@ pub const Update = struct {
 
         const file = try state_dir.createFile(file_name, .{});
         defer file.close();
-        try std.zon.stringify.serialize(self._data, .{}, file.writer());
+        var buffer: [4096]u8 = .{0} ** 4096;
+        var fw = file.writer(&buffer);
+        try std.zon.stringify.serialize(self._data, .{}, &fw.interface);
     }
 
     pub fn delete(self: Update) !void {

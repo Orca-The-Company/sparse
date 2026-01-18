@@ -1,5 +1,6 @@
 const std = @import("std");
 const log = std.log.scoped(.command);
+//const FileWriter = std.Io.Writer;
 
 const Allocator = std.mem.Allocator;
 

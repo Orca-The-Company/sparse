@@ -1,6 +1,6 @@
 const std = @import("std");
 const log = std.log.scoped(.slice);
-const ArrayListUnmanaged = std.ArrayListUnmanaged;
+const ArrayList = std.ArrayList;
 const Allocator = std.mem.Allocator;
 const StringHashMap = std.StringHashMap;
 
@@ -8,7 +8,7 @@ pub const Slice = struct {
     repo: GitRepository,
     ref: GitReference,
     target: ?*Slice = null,
-    children: ArrayListUnmanaged(*Slice) = ArrayListUnmanaged(*Slice).empty,
+    children: ArrayList(*Slice) = .empty,
     /// cache to hold already calculated isMerged calls
     _is_merge_into_map: StringHashMap(bool),
 
@@ -110,7 +110,7 @@ pub const Slice = struct {
         alloc: Allocator,
         slice_pool: []Slice,
     }) ![]*Slice {
-        var leaves = ArrayListUnmanaged(*Slice).empty;
+        var leaves = ArrayList(*Slice).empty;
         defer leaves.deinit(o.alloc);
 
         for (o.slice_pool) |*s| {
@@ -121,9 +121,14 @@ pub const Slice = struct {
         return try leaves.toOwnedSlice(o.alloc);
     }
 
-    pub fn printSliceGraph(writer: anytype, slice_pool: []Slice) !void {
+    pub fn printSliceGraph(writer: *std.Io.Writer, slice_pool: []Slice) !void {
         var gpa = std.heap.GeneralPurposeAllocator(.{}){};
         defer std.debug.assert(gpa.deinit() == .ok);
+        defer {
+            writer.flush() catch |e| {
+                log.err("Writer failed with {t}", .{e});
+            };
+        }
         const allocator = gpa.allocator();
 
         // find leaf nodes
@@ -136,13 +141,13 @@ pub const Slice = struct {
         defer allocator.free(leaves);
 
         for (leaves, 0..) |l, leaf_index| {
-            var slice_chain = std.ArrayList(*Slice).init(allocator);
-            defer slice_chain.deinit();
+            var slice_chain: std.ArrayList(*Slice) = .empty; //std.ArrayList(*Slice).init(allocator);
+            defer slice_chain.deinit(allocator);
 
             // Build the chain from leaf to root
             var current_slice: ?*Slice = l;
             while (current_slice != null) {
-                try slice_chain.append(current_slice.?);
+                try slice_chain.append(allocator, current_slice.?);
                 current_slice = current_slice.?.target;
             }
 

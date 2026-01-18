@@ -16,16 +16,17 @@ pub fn new(o: struct {
     slices: ?[]Slice = null,
 }) !Feature {
     const dup = try o.alloc.dupe(u8, o.name);
+    log.debug("helloo/n", .{});
     var f = Feature{
         .name = dup,
         .ref_name = if (o.ref_name) |r| try o.alloc.dupe(u8, r) else try asFeatureRefName(o.alloc, dup),
     };
     if (o.slices) |s| {
         if (f.slices) |*fs| {
-            try fs.appendSlice(s);
+            try fs.appendSlice(o.alloc, s);
         } else {
             f.slices = try std.ArrayList(Slice).initCapacity(o.alloc, s.len);
-            try f.slices.?.appendSlice(s);
+            try f.slices.?.appendSlice(o.alloc, s);
         }
 
         const orphan_count, const forked_count = try Slice.constructLinks(
@@ -98,9 +99,10 @@ pub fn target(self: Feature, alloc: Allocator) !?GitReference {
 
 pub fn free(self: *Feature, allocator: Allocator) void {
     allocator.free(self.ref_name);
-    if (self.slices) |s| {
+    //TODO: look this line didn't understand
+    if (self.slices) |*s| {
         for (s.items) |*i| i.free(allocator);
-        s.deinit();
+        s.deinit(allocator);
     }
     allocator.free(self.name);
 }

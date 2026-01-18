@@ -87,32 +87,46 @@ pub fn build(b: *std.Build) !void {
     var test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_lib_unit_tests.step);
     test_step.dependOn(&run_exe_unit_tests.step);
-    {
-        const helpgen_exe = b.addExecutable(.{
-            .name = "helpgen",
-            .root_module = b.createModule(.{
-                .root_source_file = b.path("src/cli/helpgen.zig"),
-                .target = b.graph.host,
-            }),
-        });
-        const help_run = b.addRunArtifact(helpgen_exe);
-        const output = help_run.captureStdOut();
-        exe.root_module.addAnonymousImport(
-            "help_strings",
-            .{
-                .root_source_file = output,
-            },
-        );
-    }
+
+    // Setup helpgen for generating help_strings module
+    const helpgen_exe = b.addExecutable(.{
+        .name = "helpgen",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/cli/helpgen.zig"),
+            .target = b.graph.host,
+        }),
+    });
+    const help_run = b.addRunArtifact(helpgen_exe);
+    const help_strings_stdout = help_run.captureStdOut();
+    // Workaround for Zig 0.15 regression: module files need .zig extension
+    // See: https://github.com/ziglang/zig/issues/24957
+    const wf = b.addWriteFiles();
+    const help_strings_output = wf.addCopyFile(help_strings_stdout, "help_strings.zig");
+    exe_mod.addAnonymousImport(
+        "help_strings",
+        .{
+            .root_source_file = help_strings_output,
+        },
+    );
+    var helpgen_step = b.step("helpgen", "Generate Help Text");
+    helpgen_step.dependOn(&help_run.step);
 
     const integration_tests_step = step: {
         const integration_tests = b.addExecutable(.{
             .name = "sparse-integration-tests",
-            .root_source_file = b.path("test/integration.zig"),
-            .optimize = optimize,
-            .target = target,
+            .root_module = b.createModule(.{
+                .root_source_file = b.path("test/integration.zig"),
+                .optimize = optimize,
+                .target = target,
+            }),
         });
         integration_tests.root_module.addImport("sparse", exe_mod);
+        integration_tests.root_module.addAnonymousImport(
+            "help_strings",
+            .{
+                .root_source_file = help_strings_output,
+            },
+        );
 
         const integration_unit_tests = b.addTest(.{
             .root_module = integration_tests.root_module,

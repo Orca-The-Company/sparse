@@ -19,7 +19,7 @@ pub const Ref = struct {
         oname: []const u8,
         rname: []const u8,
     }) !Ref {
-        logger.debug("Ref::new:: objectname:{s} refname:{s}", .{ o.oname, o.rname });
+        logger.debug("Ref::new:: objectname:{any} refname:{any}", .{ o.oname, o.rname });
 
         // duping strings since we got them from RunResult which we free before returning
         const oname = try o.alloc.dupe(u8, o.oname);
@@ -68,7 +68,7 @@ pub fn isRebaseInProgress(alloc: std.mem.Allocator, repo: GitRepository) !bool {
         &.{ git_dir, "rebase-merge" },
     );
     defer alloc.free(rebase_merge_path);
-    logger.debug("isRebaseInProgress:: rebase_merge_path: {s}", .{rebase_merge_path});
+    logger.debug("isRebaseInProgress:: rebase_merge_path: {any}", .{rebase_merge_path});
 
     // We wont open the file afterwards so it is ok to check the existence of the directory
     std.fs.accessAbsolute(rebase_merge_path, .{ .mode = .read_only }) catch |err| {
@@ -81,7 +81,7 @@ pub fn isRebaseInProgress(alloc: std.mem.Allocator, repo: GitRepository) !bool {
                 &.{ git_dir, "rebase-apply" },
             );
             defer alloc.free(rebase_apply_path);
-            logger.debug("isRebaseInProgress:: rebase_apply_path: {s}", .{rebase_apply_path});
+            logger.debug("isRebaseInProgress:: rebase_apply_path: {any}", .{rebase_apply_path});
 
             std.fs.accessAbsolute(
                 rebase_apply_path,
@@ -231,7 +231,7 @@ fn @"for-each-ref"(o: struct {
     allocator: std.mem.Allocator,
     args: []const []const u8 = &.{},
 }) !RunResult {
-    logger.debug("for-each-ref:: args:{s}", .{o.args});
+    logger.debug("for-each-ref:: args:{any}", .{o.args});
     const command: []const []const u8 = &.{
         "git",
         "for-each-ref",
@@ -251,7 +251,7 @@ fn @"show-ref"(options: struct {
     allocator: std.mem.Allocator,
     args: []const []const u8 = &.{},
 }) !RunResult {
-    logger.debug("show-ref:: args:{s}", .{options.args});
+    logger.debug("show-ref:: args:{any}", .{options.args});
     const command: []const []const u8 = &.{
         "git",
         "show-ref",
@@ -271,7 +271,7 @@ pub fn @"rev-parse"(o: struct {
     allocator: std.mem.Allocator,
     args: []const []const u8,
 }) !RunResult {
-    logger.debug("rev-parse:: args:{s}", .{o.args});
+    logger.debug("rev-parse:: args:{any}", .{o.args});
     const command: []const []const u8 = &.{
         "git",
         "rev-parse",
@@ -289,7 +289,7 @@ pub fn @"switch"(o: struct {
     allocator: std.mem.Allocator,
     args: []const []const u8,
 }) !RunResult {
-    logger.debug("switch:: args:{s}", .{o.args});
+    logger.debug("switch:: args:{any}", .{o.args});
     const command: []const []const u8 = &.{
         "git",
         "switch",
@@ -307,7 +307,7 @@ pub fn log(o: struct {
     allocator: std.mem.Allocator,
     args: []const []const u8,
 }) !RunResult {
-    logger.debug("log:: args:{s}", .{o.args});
+    logger.debug("log:: args:{any}", .{o.args});
     const command: []const []const u8 = &.{
         "git",
         "log",
@@ -325,7 +325,7 @@ pub fn rebase(o: struct {
     allocator: std.mem.Allocator,
     args: []const []const u8,
 }) !RunResult {
-    logger.debug("rebase:: args:{s}", .{o.args});
+    logger.debug("rebase:: args:{any}", .{o.args});
     const command: []const []const u8 = &.{
         "git",
         "rebase",
@@ -343,7 +343,7 @@ pub fn push(o: struct {
     allocator: std.mem.Allocator,
     args: []const []const u8,
 }) !RunResult {
-    logger.debug("push:: args:{s}", .{o.args});
+    logger.debug("push:: args:{any}", .{o.args});
     const command: []const []const u8 = &.{
         "git",
         "push",
@@ -361,7 +361,7 @@ pub fn @"merge-base"(o: struct {
     allocator: std.mem.Allocator,
     args: []const []const u8,
 }) !RunResult {
-    logger.debug("merge-base:: args:{s}", .{o.args});
+    logger.debug("merge-base:: args:{any}", .{o.args});
     const command: []const []const u8 = &.{
         "git",
         "merge-base",
@@ -379,7 +379,7 @@ pub fn fetch(o: struct {
     allocator: std.mem.Allocator,
     args: []const []const u8,
 }) !RunResult {
-    logger.debug("fetch:: args:{s}", .{o.args});
+    logger.debug("fetch:: args:{any}", .{o.args});
     const command: []const []const u8 = &.{
         "git",
         "fetch",

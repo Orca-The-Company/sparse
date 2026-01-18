@@ -20,7 +20,14 @@ const Params = struct {
         @"-h": *const fn () void = Options.help,
 
         pub fn help() void {
-            std.io.getStdOut().writer().print(help_strings.sparse_slice, .{}) catch return;
+            var buffer: [4096]u8 = undefined;
+            var stdout_writer = std.fs.File.stdout().writer(&buffer);
+            const stdout = &stdout_writer.interface;
+            // TODO: add err log
+            defer {
+                stdout.flush() catch {};
+            }
+            stdout.print(help_strings.sparse_slice, .{}) catch {};
         }
     } = .{},
 };
@@ -38,7 +45,10 @@ pub const SliceCommand = struct {
         var params = Params{ .slice_name = undefined };
         const args = try std.process.argsAlloc(alloc);
         defer std.process.argsFree(alloc, args);
-        log.debug("run:: args: {s}", .{args});
+        for (args) |arg| {
+            log.debug("got cli arguments: {s}", .{arg});
+        }
+        //log.debug("run:: args: {any}", .{args});
 
         const cli_positionals = command.parseOptions(
             @TypeOf(params._options),

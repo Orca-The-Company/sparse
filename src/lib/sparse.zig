@@ -222,16 +222,21 @@ pub fn update(o: struct {
     // and updated to reflect new commit IDs after the update
     try LibGit.init();
     defer LibGit.shutdown() catch @panic("Oops: couldn't shutdown libgit2, something weird is cooking...");
+    var buffer: [4096]u8 = undefined;
+    var stdout_writer = std.fs.File.stdout().writer(&buffer);
+    const stdout = &stdout_writer.interface;
+    defer {
+        stdout.flush() catch {};
+    }
     const repo = try LibGit.GitRepository.open();
     defer repo.free();
-
     var state = try State.Update.load(o.alloc, repo);
     defer state.free(o.alloc);
     // Check if a rebase is in progress
     const is_rebase_in_progress = try Git.isRebaseInProgress(o.alloc, repo);
     if (is_rebase_in_progress) {
         log.err("update:: rebase in progress", .{});
-        const stdout = std.io.getStdOut().writer();
+        //const stdout = std.io.getStdOut().writer();
         try stdout.print("⚠️  A rebase is currently in progress.\n", .{});
         try stdout.print("Please resolve any conflicts and run:\n", .{});
         try stdout.print("  git rebase --continue\n", .{});
@@ -250,14 +255,14 @@ pub fn update(o: struct {
         } else {
             if (!o.@"continue") {
                 log.err("update:: not able to detect current branch", .{});
-                const stdout = std.io.getStdOut().writer();
+                //const stdout = std.io.getStdOut().writer();
                 try stdout.print("❌ Unable to detect current sparse feature.\n", .{});
                 try stdout.print("Make sure you're on a sparse feature branch before running update.\n", .{});
                 return Error.UNABLE_TO_DETECT_CURRENT_FEATURE;
             }
             if (!state.inProgress()) {
                 try state.delete();
-                const stdout = std.io.getStdOut().writer();
+                // const stdout = std.io.getStdOut().writer();
                 try stdout.print("❌ No update in progress to continue.\n", .{});
                 try stdout.print("Run 'sparse update' without --continue to start a new update.\n", .{});
                 return Error.NO_UPDATE_IN_PROGRESS;
@@ -312,7 +317,12 @@ pub fn status(o: struct {
     try LibGit.init();
     defer LibGit.shutdown() catch @panic("Oops: couldn't shutdown libgit2, something weird is cooking...");
 
-    const stdout = std.io.getStdOut().writer();
+    var buffer: [4096]u8 = undefined;
+    var stdout_writer = std.fs.File.stdout().writer(&buffer);
+    const stdout = &stdout_writer.interface;
+    defer {
+        stdout.flush() catch {};
+    }
     log.debug("status:: checking for active feature", .{});
 
     // Check if we are currently on an active feature
@@ -321,6 +331,7 @@ pub fn status(o: struct {
     if (active_feature == null) {
         try stdout.print("\n🚫 \x1b[33mNo active sparse feature detected\x1b[0m\n", .{});
         try stdout.print("   Use `sparse feature <name>` to create or switch to a feature\n\n", .{});
+        //try stdout.flush();
         return;
     }
 
@@ -433,6 +444,7 @@ pub fn status(o: struct {
         try stdout.print("│  📊 Total slices: \x1b[1m{d}\x1b[0m\n", .{slices.len});
         try stdout.print("│\n", .{});
         try stdout.print("└─ \x1b[2mℹ Note: Cannot check merge status without a target reference\x1b[0m\n\n", .{});
+        try stdout.flush();
         return;
     }
 
@@ -546,9 +558,15 @@ fn updateGoodWeather(o: struct {
 }) !void {
     const target = try o.feature.target(o.alloc);
     o.state.free(o.alloc);
+    var buffer: [4096]u8 = undefined;
+    var stdout_writer = std.fs.File.stdout().writer(&buffer);
+    const stdout = &stdout_writer.interface;
+    defer {
+        stdout.flush() catch {};
+    }
 
     // Print update information
-    const stdout = std.io.getStdOut().writer();
+    //const stdout = std.io.getStdOut().writer();
     try stdout.print("Updating feature '{s}' from target '{s}'\n", .{ o.feature.name, target.?.name() });
 
     try fetchTarget(.{ .alloc = o.alloc, .target = target.? });
@@ -611,6 +629,7 @@ fn updateGoodWeather(o: struct {
             .args = &.{ "--oneline", "--decorate", "--graph", log_range },
         }) catch |err| {
             try stdout.print("Unable to show commit log: {}\n", .{err});
+            try stdout.flush();
             return err;
         };
         defer o.alloc.free(log_result.stdout);
@@ -637,8 +656,8 @@ fn updateGoodWeather(o: struct {
 
         // push all unmerged slices in remotes
         ss = leaves[0];
-        var pushed_slices = std.ArrayList(*Slice).init(o.alloc);
-        defer pushed_slices.deinit();
+        var pushed_slices: std.ArrayList(*Slice) = .empty; //std.ArrayList(*Slice).init(o.alloc);
+        defer pushed_slices.deinit(o.alloc);
 
         while (ss != null) : (ss = ss.?.target) {
             const is_merged = try ss.?.isMerged(.{
@@ -648,7 +667,7 @@ fn updateGoodWeather(o: struct {
             if (!is_merged) {
                 try ss.?.activate(o.alloc);
                 try ss.?.push(o.alloc);
-                try pushed_slices.append(ss.?);
+                try pushed_slices.append(o.alloc, ss.?);
             } else break;
         }
 
@@ -687,7 +706,14 @@ fn updateGoodWeather(o: struct {
 }
 
 fn handleUpdateInProgress(alloc: std.mem.Allocator, state: *State.Update) !void {
-    const stdout = std.io.getStdOut().writer();
+    // const stdout = std.io.getStdOut().writer();
+
+    var buffer: [4096]u8 = undefined;
+    var stdout_writer = std.fs.File.stdout().writer(&buffer);
+    const stdout = &stdout_writer.interface;
+    defer {
+        stdout.flush() catch {};
+    }
     try stdout.print("🔄 Continuing update for feature '{s}'...\n", .{state._data.feature.?});
 
     var feature_updated = try Feature.findFeatureByName(.{
@@ -709,6 +735,7 @@ fn handleUpdateInProgress(alloc: std.mem.Allocator, state: *State.Update) !void 
                 try updateGoodWeather(.{ .alloc = alloc, .feature = f, .state = state });
             } else {
                 try stdout.print("❌ Unable to find feature to continue update\n", .{});
+                try stdout.flush();
                 return Error.UNABLE_TO_DETECT_CURRENT_FEATURE;
             }
             return Error.UNABLE_TO_DETECT_CURRENT_FEATURE;
@@ -728,8 +755,8 @@ fn handleUpdateInProgress(alloc: std.mem.Allocator, state: *State.Update) !void 
 
                 const upstream = try target.upstream(ss.?.repo);
                 defer upstream.free();
-                var pushed_slices = std.ArrayList(*Slice).init(alloc);
-                defer pushed_slices.deinit();
+                var pushed_slices: std.ArrayList(*Slice) = .empty; //std.ArrayList(*Slice).init(alloc);
+                defer pushed_slices.deinit(alloc);
 
                 while (ss != null) : (ss = ss.?.target) {
                     const is_merged = try ss.?.isMerged(.{
@@ -739,7 +766,7 @@ fn handleUpdateInProgress(alloc: std.mem.Allocator, state: *State.Update) !void 
                     if (!is_merged) {
                         try ss.?.activate(alloc);
                         try ss.?.push(alloc);
-                        try pushed_slices.append(ss.?);
+                        try pushed_slices.append(alloc, ss.?);
                     } else break;
                 }
 
@@ -759,11 +786,13 @@ fn handleUpdateInProgress(alloc: std.mem.Allocator, state: *State.Update) !void 
             } else {
                 try stdout.print("❌ Unable to find feature to continue update\n", .{});
             }
+            try stdout.flush();
         },
         .Complete => {
             log.debug("update:: failed when complete command is called before, no need to continue updating", .{});
             try stdout.print("✓ Update already completed - nothing to continue\n", .{});
             try state.delete();
+            try stdout.flush();
         },
     }
 }
@@ -828,7 +857,7 @@ fn jump(o: struct {
 }
 
 // Helper function to display git notes information for slices
-fn displayGitNotesInfo(alloc: std.mem.Allocator, writer: anytype, slices: []Slice) !void {
+fn displayGitNotesInfo(alloc: std.mem.Allocator, stdout: *std.Io.Writer, slices: []Slice) !void {
 
     // Track if any notes were found
     var notes_found = false;
@@ -851,7 +880,7 @@ fn displayGitNotesInfo(alloc: std.mem.Allocator, writer: anytype, slices: []Slic
                 notes_with_parents += 1;
 
                 const slice_name = slice_item.name();
-                try writer.print("│  📝 \x1b[1m{s}:\x1b[0m parent → \x1b[32m{s}\x1b[0m\n", .{ slice_name, parent_info });
+                try stdout.print("│  📝 \x1b[1m{s}:\x1b[0m parent → \x1b[32m{s}\x1b[0m\n", .{ slice_name, parent_info });
             } else {
                 // No note exists for this slice
                 notes_without_parents += 1;
@@ -864,19 +893,20 @@ fn displayGitNotesInfo(alloc: std.mem.Allocator, writer: anytype, slices: []Slic
 
     // Show summary of notes status
     if (notes_found) {
-        try writer.print("│  ✅ Slices with parent notes: \x1b[1;32m{d}\x1b[0m\n", .{notes_with_parents});
+        try stdout.print("│  ✅ Slices with parent notes: \x1b[1;32m{d}\x1b[0m\n", .{notes_with_parents});
         if (notes_without_parents > 0) {
-            try writer.print("│  ⚠️  Slices without parent notes: \x1b[1;33m{d}\x1b[0m\n", .{notes_without_parents});
+            try stdout.print("│  ⚠️  Slices without parent notes: \x1b[1;33m{d}\x1b[0m\n", .{notes_without_parents});
         }
     } else {
-        try writer.print("│  📄 No git notes found for slice relationships\n", .{});
-        try writer.print("│  💡 \x1b[2mTip: Use git notes to preserve relationships after rebasing\x1b[0m\n", .{});
+        try stdout.print("│  📄 No git notes found for slice relationships\n", .{});
+        try stdout.print("│  💡 \x1b[2mTip: Use git notes to preserve relationships after rebasing\x1b[0m\n", .{});
     }
 
     // Show instructions for team collaboration if notes exist
     if (notes_found) {
-        try writer.print("│  \x1b[2m💡 Team tip: Push notes with 'git push origin refs/notes/commits'\x1b[0m\n", .{});
+        try stdout.print("│  \x1b[2m💡 Team tip: Push notes with 'git push origin refs/notes/commits'\x1b[0m\n", .{});
     }
+    try stdout.flush();
 }
 
 test {

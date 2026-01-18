@@ -1,4 +1,5 @@
 const std = @import("std");
+const AllocatingWriter = @import("std").Io.Writer.Allocating;
 
 pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
@@ -46,20 +47,22 @@ pub fn addPaths(
         // find the SDK path.
         const libc = try std.zig.LibCInstallation.findNative(.{
             .allocator = b.allocator,
-            .target = step.rootModuleTarget(),
+            .target = &step.rootModuleTarget(),
             .verbose = false,
         });
 
         // Render the file compatible with the `--libc` Zig flag.
-        var list: std.ArrayList(u8) = .init(b.allocator);
-        defer list.deinit();
-        try libc.render(list.writer());
-
+        var buffer: std.ArrayList(u8) = .empty;
+        //defer buffer.deinit(b.allocator);
+        var writer_allocating: AllocatingWriter = AllocatingWriter.fromArrayList(b.allocator, &buffer);
+        defer writer_allocating.deinit();
+        try libc.render(&writer_allocating.writer);
         // Create a temporary file to store the libc path because
         // `--libc` expects a file path.
         const wf = b.addWriteFiles();
-        const path = wf.add("libc.txt", list.items);
-
+        const path = wf.add("libc.txt", writer_allocating.written());
+        //try writer.flush();
+        //list.deinit();
         // Determine our framework path. Zig has a bug where it doesn't
         // parse this from the libc txt file for `-framework` flags:
         // https://github.com/ziglang/zig/issues/24024

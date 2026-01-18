@@ -188,7 +188,7 @@ pub fn createFeatureStep(alloc: Allocator, data: TestData) IntegrationTestResult
         return test_result;
     };
 
-    log.debug(":: My Sparse Slice {s}\n", .{sparce_slice});
+    log.debug(":: My Sparse Slice {any}\n", .{sparce_slice});
     if (test_result.feature.error_context.?.err == null) {
         test_result.feature.exit_code = 0;
     }

@@ -1,7 +1,7 @@
 const std = @import("std");
 
 // Global log level based on environment variable
-var runtime_log_level: ?std.log.Level = null; // Default to no logs
+var runtime_log_level: ?std.log.Level = .debug; // Default to no logs
 
 pub const std_options: std.Options = .{
     .logFn = logFn,

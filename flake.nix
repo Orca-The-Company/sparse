@@ -5,7 +5,7 @@
     flake-utils.url = "github:numtide/flake-utils";
 
     # 0.14.0
-    zig-nixpkgs.url = "github:NixOS/nixpkgs/f6db44a8daa59c40ae41ba6e5823ec77fe0d2124";
+    zig-nixpkgs.url = "github:NixOS/nixpkgs/f665af0cdb70ed27e1bd8f9fdfecaf451260fc55";
     # 1.9.0
     # libgit2-nixpkgs.url = "github:NixOS/nixpkgs/f6db44a8daa59c40ae41ba6e5823ec77fe0d2124";
   };
@@ -115,6 +115,7 @@
         devShells.default = zig-nixpkgs.mkShell {
           packages = [
             zig-nixpkgs.zig
+            zig-nixpkgs.zls
             zig-nixpkgs.openssl
           ];
 

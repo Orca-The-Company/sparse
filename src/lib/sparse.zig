@@ -444,7 +444,7 @@ pub fn status(o: struct {
         try stdout.print("│  📊 Total slices: \x1b[1m{d}\x1b[0m\n", .{slices.len});
         try stdout.print("│\n", .{});
         try stdout.print("└─ \x1b[2mℹ Note: Cannot check merge status without a target reference\x1b[0m\n\n", .{});
-        try stdout.flush();
+        //try stdout.flush();
         return;
     }
 
@@ -629,7 +629,7 @@ fn updateGoodWeather(o: struct {
             .args = &.{ "--oneline", "--decorate", "--graph", log_range },
         }) catch |err| {
             try stdout.print("Unable to show commit log: {}\n", .{err});
-            try stdout.flush();
+            //try stdout.flush();
             return err;
         };
         defer o.alloc.free(log_result.stdout);
@@ -735,7 +735,7 @@ fn handleUpdateInProgress(alloc: std.mem.Allocator, state: *State.Update) !void 
                 try updateGoodWeather(.{ .alloc = alloc, .feature = f, .state = state });
             } else {
                 try stdout.print("❌ Unable to find feature to continue update\n", .{});
-                try stdout.flush();
+                //try stdout.flush();
                 return Error.UNABLE_TO_DETECT_CURRENT_FEATURE;
             }
             return Error.UNABLE_TO_DETECT_CURRENT_FEATURE;
@@ -786,13 +786,13 @@ fn handleUpdateInProgress(alloc: std.mem.Allocator, state: *State.Update) !void 
             } else {
                 try stdout.print("❌ Unable to find feature to continue update\n", .{});
             }
-            try stdout.flush();
+            //try stdout.flush();
         },
         .Complete => {
             log.debug("update:: failed when complete command is called before, no need to continue updating", .{});
             try stdout.print("✓ Update already completed - nothing to continue\n", .{});
             try state.delete();
-            try stdout.flush();
+            //try stdout.flush();
         },
     }
 }
@@ -906,7 +906,7 @@ fn displayGitNotesInfo(alloc: std.mem.Allocator, stdout: *std.Io.Writer, slices:
     if (notes_found) {
         try stdout.print("│  \x1b[2m💡 Team tip: Push notes with 'git push origin refs/notes/commits'\x1b[0m\n", .{});
     }
-    try stdout.flush();
+    //try stdout.flush();
 }
 
 test {

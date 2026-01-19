@@ -68,7 +68,7 @@ pub const IntegrationTest = union(enum) {
 };
 
 pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa: std.heap.GeneralPurposeAllocator(.{}) = .init;
     defer std.debug.assert(gpa.deinit() == .ok);
     const allocator = gpa.allocator();
     const args = try std.process.argsAlloc(allocator);
@@ -76,12 +76,16 @@ pub fn main() !void {
 
     std.testing.log_level = .debug;
     const repo_dir = try std.fs.path.join(allocator, &.{ build_options.output_dir, "sparse_test_repo" });
+    log.debug("test::main:: repo dir {s}", .{repo_dir});
     defer allocator.free(repo_dir);
 }
 
 test "Create Sparse Feature with only feature name" {
     const test_allocator = std.testing.allocator;
     const args = try std.process.argsAlloc(test_allocator);
+    for (args) |arg| {
+        log.debug("benis:::Create Sparse Feature with only name:: arg - {s}", .{arg});
+    }
     defer std.process.argsFree(test_allocator, args);
 
     const integration: IntegrationTest = undefined;
@@ -96,12 +100,20 @@ test "Create Sparse Feature with only feature name" {
     defer data.free(test_allocator);
     // set a feature name
     data.feature_name = "hellofeature";
+    log.debug(
+        "test::data feature_name: {s}, repodir: {s} ,",
+        .{
+            data.feature_name.?,
+            data.repo_dir.?,
+        },
+    );
     const rr_feature_step = feature_integration.run(
         test_allocator,
         SparseFeatureTestData,
         data,
         sparse_feature_test.createFeatureStep,
     );
+
     if (!rr_feature_step.feature.status()) {
         log.err("Test Failed with exit_code {d} {any}", .{
             rr_feature_step.feature.exit_code,

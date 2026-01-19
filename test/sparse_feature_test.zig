@@ -179,7 +179,7 @@ pub fn createFeatureStep(alloc: Allocator, data: TestData) IntegrationTestResult
     defer alloc.free(rr_git_show_ref.stderr);
 
     //Parsing git-show-ref
-    const sparce_slice = parseGitShowRefResult(
+    _ = parseGitShowRefResult(
         alloc,
         rr_git_show_ref.stdout,
         data.feature_name.?,

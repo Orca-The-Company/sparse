@@ -75,6 +75,7 @@ pub fn main() !void {
     defer std.process.argsFree(allocator, args);
 
     std.testing.log_level = .debug;
+    // maybe we should use it this approach in build.zig?
     const repo_dir = try std.fs.path.join(allocator, &.{ build_options.output_dir, "sparse_test_repo" });
     log.debug("test::main:: repo dir {s}", .{repo_dir});
     defer allocator.free(repo_dir);
@@ -118,7 +119,6 @@ test "Create Sparse Feature with only feature name" {
         log.err("Test Failed with exit_code {d} {any}", .{
             rr_feature_step.feature.exit_code,
             rr_feature_step.feature.error_context.?.err,
-                //rr_feature_step.feature.error_context.?.err_msg.?,
         });
     }
     try feature_integration.teardown(test_allocator, data);

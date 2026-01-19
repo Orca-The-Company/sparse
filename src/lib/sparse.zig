@@ -30,7 +30,7 @@ pub fn feature(
     slice_name: ?[]const u8,
     target: []const u8,
 ) !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa: std.heap.GeneralPurposeAllocator(.{}) = .init;
     defer std.debug.assert(gpa.deinit() == .ok);
     const allocator = gpa.allocator();
     try LibGit.init();
@@ -44,7 +44,7 @@ pub fn feature(
 
     const _slice = if (slice_name) |s| s else constants.LAST_SLICE_NAME_POINTER;
 
-    // once sparse branchinde olup olmadigimizi kontrol edelim
+    // Check if we are at sparse slice branch
     // git show-ref --branches --head # butun branchleri ve suan ki HEAD i gormemizi
     // sagliyor
     var maybe_active_feature = try Feature.activeFeature(.{

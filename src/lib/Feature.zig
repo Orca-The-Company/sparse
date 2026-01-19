@@ -16,7 +16,6 @@ pub fn new(o: struct {
     slices: ?[]Slice = null,
 }) !Feature {
     const dup = try o.alloc.dupe(u8, o.name);
-    log.debug("helloo/n", .{});
     var f = Feature{
         .name = dup,
         .ref_name = if (o.ref_name) |r| try o.alloc.dupe(u8, r) else try asFeatureRefName(o.alloc, dup),

@@ -46,10 +46,7 @@ pub const SparseFeatureTest = struct {
         std.testing.log_level = .debug;
         const rr_temp_dir = try system.system(.{
             .allocator = alloc,
-            .args = &.{
-                "mktemp",
-                "-d",
-            },
+            .args = &.{ "mktemp", "-d", "-p", ".zig-cache/tmp" },
         });
         defer alloc.free(rr_temp_dir.stdout);
         defer alloc.free(rr_temp_dir.stderr);
@@ -93,24 +90,25 @@ pub const SparseFeatureTest = struct {
         data: TestData,
     ) !void {
         _ = self;
+        _ = alloc;
 
         std.testing.log_level = .debug;
         log.info("repo_dir {s}\n", .{data.repo_dir.?});
-        const rr_temp_dir = try system.system(.{
-            .allocator = alloc,
-            .args = &.{
-                "rm",
-                "-r",
-                data.repo_dir.?,
-            },
-        });
-        log.info("stdout {s}\n", .{rr_temp_dir.stdout});
-        defer alloc.free(rr_temp_dir.stdout);
-        defer alloc.free(rr_temp_dir.stderr);
-
-        try std.testing.expect(rr_temp_dir.term.Exited == 0);
-        try std.testing.expect(std.mem.eql(u8, rr_temp_dir.stderr, ""));
-        try std.testing.expect(std.mem.eql(u8, rr_temp_dir.stdout, ""));
+        // const rr_temp_dir = try system.system(.{
+        //     .allocator = alloc,
+        //     .args = &.{
+        //         "rm",
+        //         "-r",
+        //         data.repo_dir.?,
+        //     },
+        // });
+        // log.info("stdout {s}\n", .{rr_temp_dir.stdout});
+        // defer alloc.free(rr_temp_dir.stdout);
+        // defer alloc.free(rr_temp_dir.stderr);
+        //
+        // try std.testing.expect(rr_temp_dir.term.Exited == 0);
+        // try std.testing.expect(std.mem.eql(u8, rr_temp_dir.stderr, ""));
+        // try std.testing.expect(std.mem.eql(u8, rr_temp_dir.stdout, ""));
     }
     pub fn run(
         self: SparseFeatureTest,
@@ -135,20 +133,28 @@ pub fn createFeatureStep(alloc: Allocator, data: TestData) IntegrationTestResult
             },
         },
     };
+    // Resolve sparse exe path to absolute path (needed because test runs in temp dir)
+    const sparse_exe_abs = std.fs.cwd().realpathAlloc(alloc, build_options.sparse_exe_path) catch {
+        test_result.feature.error_context.?.err = IntegrationTestError.TERM_EXIT_FAILED;
+        return test_result;
+    };
+    defer alloc.free(sparse_exe_abs);
+
     createCommitOnTarget(alloc, data) catch {
         test_result.feature.error_context.?.err = IntegrationTestError.TERM_EXIT_FAILED;
         return test_result;
     };
-    // run sparse feature [feature_name] --to = null
     const rr_sparse_feature = system.system(.{
         .allocator = alloc,
         .args = &.{
-            build_options.sparse_exe_path,
+            sparse_exe_abs,
             "feature",
             data.feature_name.?,
         },
         .cwd = data.repo_dir.?,
-    }) catch {
+    }) catch |e| {
+        log.debug("createFeatureStep::: sparse exe path:{s} ", .{sparse_exe_abs});
+        log.debug("createFeatureStep::: error:{any} ", .{e});
         test_result.feature.error_context.?.err = IntegrationTestError.TERM_EXIT_FAILED;
         return test_result;
     };
@@ -166,13 +172,13 @@ pub fn createFeatureStep(alloc: Allocator, data: TestData) IntegrationTestResult
         return test_result;
     };
     log.debug(
-        "sparse::feature::test:: git show ref stderr:{s}\n",
-        .{rr_git_show_ref.stdout},
+        "sparse::feature::test:: git show ref stdout:{s}, stderr: {s}\n",
+        .{ rr_git_show_ref.stdout, rr_git_show_ref.stderr },
     );
     defer alloc.free(rr_git_show_ref.stdout);
     defer alloc.free(rr_git_show_ref.stderr);
 
-    // Parsing git-show-ref
+    //Parsing git-show-ref
     const sparce_slice = parseGitShowRefResult(
         alloc,
         rr_git_show_ref.stdout,
@@ -188,7 +194,6 @@ pub fn createFeatureStep(alloc: Allocator, data: TestData) IntegrationTestResult
         return test_result;
     };
 
-    log.debug(":: My Sparse Slice {any}\n", .{sparce_slice});
     if (test_result.feature.error_context.?.err == null) {
         test_result.feature.exit_code = 0;
     }

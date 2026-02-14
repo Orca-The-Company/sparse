@@ -26,7 +26,13 @@ const Params = struct {
         @"-h": *const fn () void = Options.help,
 
         pub fn help() void {
-            std.io.getStdOut().writer().print(help_strings.sparse_feature, .{}) catch return;
+            var buffer: [4096]u8 = .{0} ** 4096;
+            var stdout_writer = std.fs.File.stdout().writer(&buffer);
+            const stdout = &stdout_writer.interface;
+            defer {
+                stdout.flush() catch {};
+            }
+            stdout.print(help_strings.sparse_feature, .{}) catch {};
         }
     } = .{},
 };
@@ -40,7 +46,9 @@ pub const FeatureCommand = struct {
         var params = Params{ .feature_name = undefined };
         const args = try std.process.argsAlloc(alloc);
         defer std.process.argsFree(alloc, args);
-        log.debug("got cli arguments: {s}", .{args});
+        for (args) |arg| {
+            log.debug("got cli arguments: {s}", .{arg});
+        }
 
         const cli_positionals = command.parseOptions(
             @TypeOf(params._options),

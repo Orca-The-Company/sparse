@@ -1,7 +1,7 @@
 const std = @import("std");
 
 // Global log level based on environment variable
-var runtime_log_level: ?std.log.Level = null; // Default to no logs
+var runtime_log_level: ?std.log.Level = .debug; // Default to no logs
 
 pub const std_options: std.Options = .{
     .logFn = logFn,
@@ -25,7 +25,7 @@ pub fn logFn(
 }
 
 pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa: std.heap.GeneralPurposeAllocator(.{}) = .init;
     defer std.debug.assert(gpa.deinit() == .ok);
 
     const allocator = gpa.allocator();

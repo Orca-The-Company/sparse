@@ -2,9 +2,12 @@
     .name = .sparse,
     .version = "0.0.0",
     .fingerprint = 0x2883adb9d90cf982, // Changing this has security and trust implications.
-    .minimum_zig_version = "0.14.0",
+    .minimum_zig_version = "0.15.2",
     .dependencies = .{
-        .libgit2 = .{ .path = "vendored/libgit2" },
+        .libgit2 = .{
+            .url = "git+https://github.com/allyourcodebase/libgit2#58dfd002d47a8c9fbd99d4a939cb343172590e1b",
+            .hash = "libgit2-1.9.0-uizqTQnZAADyPOmBklxzj_lrnfJoRLRDBbbTvi28SrZX",
+        },
         .apple_sdk = .{ .path = "vendored/apple-sdk" },
     },
 

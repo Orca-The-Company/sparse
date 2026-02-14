@@ -1,4 +1,5 @@
 const std = @import("std");
+const Writer = std.Io.Writer;
 const Tag = std.zig.Token.Tag;
 const Ast = std.zig.Ast;
 const Allocator = std.mem.Allocator;
@@ -6,21 +7,29 @@ const Allocator = std.mem.Allocator;
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const alloc = gpa.allocator();
-    const stdout = std.io.getStdOut().writer();
+    var buffer: [4096]u8 = .{0} ** 4096;
+    var stdout_writer = std.fs.File.stdout().writer(&buffer);
+    const stdout = &stdout_writer.interface;
+    defer {
+        stdout.flush() catch {};
+    }
 
     try genCommands(alloc, stdout);
 }
 
-fn genCommands(alloc: std.mem.Allocator, writer: anytype) !void {
+fn genCommands(alloc: std.mem.Allocator, writer: *Writer) !void {
     try extractFileIntoHelp(alloc, writer, "feature_command.zig", "sparse_feature");
     try extractFileIntoHelp(alloc, writer, "slice_command.zig", "sparse_slice");
     try extractFileIntoHelp(alloc, writer, "update_command.zig", "sparse_update");
     try extractFileIntoHelp(alloc, writer, "status_command.zig", "sparse_status");
 }
 
-fn extractFileIntoHelp(alloc: Allocator, writer: anytype, comptime zig_file: []const u8, comptime const_name: []const u8) !void {
+fn extractFileIntoHelp(alloc: Allocator, writer: *Writer, comptime zig_file: []const u8, comptime const_name: []const u8) !void {
     var ast = try Ast.parse(alloc, @embedFile(zig_file), .zig);
     defer ast.deinit(alloc);
+    defer {
+        writer.flush() catch {};
+    }
     const tokens = ast.tokens.items(.tag);
     const maybe_params_struct = findToken(ast, tokens, isParams);
     if (maybe_params_struct) |params_struct| {
@@ -65,15 +74,15 @@ fn isParams(tt: []Tag, current_index: usize, a: Ast) bool {
 
 /// First token must be .l_brace
 fn extractNextStruct(alloc: Allocator, ast: Ast, start_idx: usize) ![]const u8 {
-    var stack = std.ArrayList(Tag).init(alloc);
-    defer stack.deinit();
-    var lines = std.ArrayList([]const u8).init(alloc);
-    defer lines.deinit();
+    var stack = std.ArrayList(Tag).empty;
+    defer stack.deinit(alloc);
+    var lines = std.ArrayList([]const u8).empty;
+    defer lines.deinit(alloc);
 
     const tokens = ast.tokens.items(.tag);
     for (tokens[start_idx..], start_idx..) |token, i| {
         //std.debug.print("Found {} name: {s}\n", .{ token, ast.tokenSlice(@intCast(i)) });
-        if (token == .l_brace) _ = try stack.append(token);
+        if (token == .l_brace) _ = try stack.append(alloc, token);
         if (token == .r_brace) _ = stack.pop();
         if (stack.items.len == 0) break;
 
@@ -81,15 +90,15 @@ fn extractNextStruct(alloc: Allocator, ast: Ast, start_idx: usize) ![]const u8 {
         if (token != .identifier) continue;
         if (tokens[i - 2] != .doc_comment and tokens[i - 1] != .doc_comment) continue;
         const extracted = try extractDocComments(alloc, ast, @intCast(i), tokens);
-        try lines.append(extracted);
+        try lines.append(alloc, extracted);
     }
 
-    var buffer = std.ArrayList(u8).init(alloc);
-    defer buffer.deinit();
+    var buffer = std.ArrayList(u8).empty;
+    defer buffer.deinit(alloc);
     for (lines.items) |line| {
-        try buffer.writer().print("{s}", .{line});
+        try buffer.print(alloc, "{s}", .{line});
     }
-    return buffer.toOwnedSlice();
+    return buffer.toOwnedSlice(alloc);
 }
 
 fn extractDocComments(
@@ -107,24 +116,22 @@ fn extractDocComments(
     } else unreachable;
 
     // Go through and build up the lines.
-    var lines = std.ArrayList([]const u8).init(alloc);
-    defer lines.deinit();
+    var lines = std.ArrayList([]const u8).empty;
+    defer lines.deinit(alloc);
     for (start_idx..index + 1) |i| {
         const token = tokens[i];
         if (token != .doc_comment) break;
-        try lines.append(ast.tokenSlice(@intCast(i))[3..]);
+        try lines.append(alloc, ast.tokenSlice(@intCast(i))[3..]);
     }
 
     // Convert the lines to a multiline string.
-    var buffer = std.ArrayList(u8).init(alloc);
-    const writer = buffer.writer();
+    var buffer = std.ArrayList(u8).empty;
     const prefix = findCommonPrefix(lines);
     for (lines.items) |line| {
-        try writer.writeAll(line[@min(prefix, line.len)..]);
-        try writer.writeAll("\n");
+        try buffer.print(alloc, "{s}\n", .{line[@min(prefix, line.len)..]});
     }
 
-    return buffer.toOwnedSlice();
+    return buffer.toOwnedSlice(alloc);
 }
 
 fn findCommonPrefix(lines: std.ArrayList([]const u8)) usize {

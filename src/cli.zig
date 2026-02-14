@@ -11,9 +11,15 @@ fn getCommandDescription(command_name: []const u8) []const u8 {
     return "Unknown command";
 }
 
-fn showHelp() void {
-    const writer = std.io.getStdOut().writer();
-
+fn showHelp() !void {
+    //const writer = std.fs.File.stdout().writer(stdout)
+    var buffer: [4096]u8 = undefined;
+    var stdout_writer = std.fs.File.stdout().writer(&buffer);
+    const writer = &stdout_writer.interface;
+    //TODO: add error log to flush
+    defer {
+        writer.flush() catch {};
+    }
     writer.print("Sparse - A CLI tool for stacked pull request workflows\n\n", .{}) catch return;
     writer.print("USAGE:\n    sparse <command> [options]\n\n", .{}) catch return;
     writer.print("COMMANDS:\n", .{}) catch return;
@@ -35,6 +41,13 @@ fn showHelp() void {
 }
 
 fn parse(args: [][:0]u8) !Command {
+    var buffer: [4096]u8 = undefined;
+    var stdout_writer = std.fs.File.stdout().writer(&buffer);
+    const writer = &stdout_writer.interface;
+    // TODO: add err log to defer
+    defer {
+        writer.flush() catch {};
+    }
     const my_commands = @typeInfo(Command).@"union".fields;
 
     if (args.len < 2) {
@@ -43,7 +56,7 @@ fn parse(args: [][:0]u8) !Command {
 
     // Check for global --help flag
     if (std.mem.eql(u8, args[1], "--help")) {
-        showHelp();
+        try showHelp();
         std.process.exit(0);
     }
 
@@ -56,25 +69,32 @@ fn parse(args: [][:0]u8) !Command {
 }
 
 pub fn run(alloc: Allocator) !void {
+    var buffer: [4096]u8 = undefined;
+    var stdout_writer = std.fs.File.stdout().writer(&buffer);
+    var writer = &stdout_writer.interface;
+    //TODO: add error log to flush
+    defer {
+        writer.flush() catch {};
+    }
     const args = try std.process.argsAlloc(alloc);
     defer std.process.argsFree(alloc, args);
 
     const command = parse(args) catch |err| switch (err) {
         CommandError.UnknownCommand => {
-            const stdout = std.io.getStdOut().writer();
+            //const stdout = std.io.getStdOut().writer();
             if (args.len >= 2) {
-                stdout.print("'{s}' is not a sparse command.\n\n", .{args[1]}) catch {};
+                writer.print("'{s}' is not a sparse command.\n\n", .{args[1]}) catch {};
             } else {
-                stdout.print("No command specified.\n\n", .{}) catch {};
+                writer.print("No command specified.\n\n", .{}) catch {};
             }
-            stdout.print("Available commands: ", .{}) catch {};
+            writer.print("Available commands: ", .{}) catch {};
 
             const my_commands = @typeInfo(Command).@"union".fields;
             inline for (my_commands, 0..) |c, i| {
-                if (i > 0) stdout.print(", ", .{}) catch {};
-                stdout.print("{s}", .{c.name}) catch {};
+                if (i > 0) writer.print(", ", .{}) catch {};
+                writer.print("{s}", .{c.name}) catch {};
             }
-            stdout.print("\n\nFor more help: sparse --help\n", .{}) catch {};
+            writer.print("\n\nFor more help: sparse --help\n", .{}) catch {};
             std.process.exit(1);
         },
         else => return err,
@@ -82,10 +102,10 @@ pub fn run(alloc: Allocator) !void {
     const return_code = try command.run(alloc);
     std.process.exit(return_code);
 }
-
+// TODO: add tests about writer
 test "parse a non existent command" {
     const expectEqual = std.testing.expectEqual;
     const args: [2][:0]const u8 = .{ "sparse", "boo" };
-    const command = parse(@constCast(@ptrCast(&args))) catch |e| e;
+    const command = parse(@ptrCast(@constCast(&args))) catch |e| e;
     try expectEqual(CommandError.UnknownCommand, command);
 }

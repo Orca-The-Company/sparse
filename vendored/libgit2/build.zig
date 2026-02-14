@@ -445,33 +445,18 @@ pub fn build(b: *std.Build) !void {
 
     const test_step = b.step("test", "Run core unit tests (requires python)");
     {
-        if (builtin.os.tag != .windows) {
-            // Fix the test fixture file permissions. This is necessary because Zig does
-            // not respect the execute permission on arbitrary files it extracts from dependencies.
-            // Since we need those files to have the execute permission set for tests to
-            // run successfully, we need to patch them before we bake them into the
-            // test executable. While modifying the global cache is hacky, it wont break
-            // hashes for the same reason above. -blurrycat 3/31/25
-            for ([_]std.Build.LazyPath{
-                libgit_root.path(b, "tests/resources/filemodes/exec_on"),
-                libgit_root.path(b, "tests/resources/filemodes/exec_off2on_staged"),
-                libgit_root.path(b, "tests/resources/filemodes/exec_off2on_workdir"),
-                libgit_root.path(b, "tests/resources/filemodes/exec_on_untracked"),
-            }) |lazy| {
-                const path = lazy.getPath2(b, null);
-                const file = try std.fs.cwd().openFile(path, .{
-                    .mode = .read_write,
-                });
-                defer file.close();
-                try file.setPermissions(.{ .inner = .{ .mode = 0o755 } });
-            }
-        }
-
         const gen_cmd = b.addSystemCommand(&.{"python3"});
         gen_cmd.addFileArg(libgit_src.path("tests/clar/generate.py"));
         const clar_suite = gen_cmd.addPrefixedOutputDirectoryArg("-o", "clar_suite");
         gen_cmd.addArgs(&.{ "-f", "-xonline", "-xstress", "-xperf" });
         gen_cmd.addDirectoryArg(libgit_src.path("tests/libgit2"));
+
+        // Copy the clar source so it can be modified below.
+        const clar_src = b.addWriteFiles().addCopyDirectory(
+            libgit_src.path("tests/clar"),
+            "clar_src",
+            .{},
+        );
 
         const runner = b.addExecutable(.{
             .name = "libgit2_tests",
@@ -482,7 +467,7 @@ pub fn build(b: *std.Build) !void {
             }),
         });
         runner.addIncludePath(clar_suite);
-        runner.addIncludePath(libgit_src.path("tests/clar"));
+        runner.addIncludePath(clar_src);
         runner.addIncludePath(libgit_src.path("tests/libgit2"));
 
         runner.addConfigHeader(features);
@@ -496,21 +481,72 @@ pub fn build(b: *std.Build) !void {
 
         runner.linkLibrary(lib);
 
+        const runner_flags = &.{
+            "-DCLAR_FIXTURE_PATH", // See clar_fix step below
+            "-DCLAR_TMPDIR=\"libgit2_tests\"",
+            "-DCLAR_WIN32_LONGPATHS",
+            "-DGIT_DEPRECATE_HARD",
+        };
         runner.addCSourceFiles(.{
-            .root = libgit_src.path("tests/"),
-            .files = &(clar_sources ++ libgit2_test_sources),
-            .flags = &.{
-                b.fmt(
-                    "-DCLAR_FIXTURE_PATH=\"{s}\"",
-                    // clar expects the fixture path to only have posix seperators or else some tests will break on windows
-                    .{try getNormalizedPath(libgit_src.path("tests/resources"), b, &runner.step)},
-                ),
-                "-DCLAR_TMPDIR=\"libgit2_tests\"",
-                "-DCLAR_WIN32_LONGPATHS",
-                "-D_FILE_OFFSET_BITS=64",
-                "-DGIT_DEPRECATE_HARD",
-            },
+            .root = libgit_src.path("tests/libgit2/"),
+            .files = &libgit2_test_sources,
+            .flags = runner_flags,
         });
+        runner.addCSourceFiles(.{
+            .root = clar_src,
+            .files = &clar_sources,
+            .flags = runner_flags,
+        });
+
+        const resources_dir = switch (@import("builtin").os.tag) {
+            .windows => libgit_src.path("tests/resources/"),
+            else => dir: {
+                // Fix the test fixture file permissions. This is necessary because Zig does
+                // not respect the execute permission on arbitrary files it extracts from dependencies.
+                // Since we need those files to have the execute permission set for tests to
+                // run successfully, we need to patch them before we bake them into the
+                // test executable.
+                const resources_dir = b.addWriteFiles().addCopyDirectory(
+                    libgit_root.path(b, "tests/resources/"),
+                    "test_resources",
+                    .{},
+                );
+                const chmod = b.addExecutable(.{
+                    .name = "chmod",
+                    .root_module = b.createModule(.{
+                        .root_source_file = b.path("chmod.zig"),
+                        .target = b.graph.host,
+                    }),
+                });
+                const run_chmod = b.addRunArtifact(chmod);
+                run_chmod.addFileArg(resources_dir.path(b, "filemodes/exec_on"));
+                run_chmod.addFileArg(resources_dir.path(b, "filemodes/exec_off2on_staged"));
+                run_chmod.addFileArg(resources_dir.path(b, "filemodes/exec_off2on_workdir"));
+                run_chmod.addFileArg(resources_dir.path(b, "filemodes/exec_on_untracked"));
+                runner.step.dependOn(&run_chmod.step);
+
+                break :dir resources_dir;
+            },
+        };
+        {
+            // Clar hardcodes the path to resources_dir via the `-DCLAR_FIXTURE_PATH="..."` flag.
+            // This path isn't known at configure-time, so we have to create a dedicated build step.
+            // This step replaces *reads* of the `CLAR_FIXTURE_PATH` macro in a local-cache copy of the source code
+            // (see clar_src). Thankfully the macro is only read by `tests/clar/clar/fixture.h` once.
+            const clar_fix = b.addExecutable(.{
+                .name = "clar_fix",
+                .root_module = b.createModule(.{
+                    .root_source_file = b.path("clar_fix.zig"),
+                    .target = b.graph.host,
+                }),
+            });
+
+            const run_fix = b.addRunArtifact(clar_fix);
+            // run_fix.has_side_effects = true; // @Todo is this necessary? What are the rules for cache invalidation with Run steps?
+            run_fix.addFileArg(clar_src.path(b, "clar/fixtures.h"));
+            run_fix.addDirectoryArg(resources_dir);
+            runner.step.dependOn(&run_fix.step);
+        }
 
         const TestHelper = struct {
             b: *std.Build,

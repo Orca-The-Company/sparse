@@ -23,7 +23,15 @@ const Params = struct {
         @"-h": *const fn () void = Options.help,
 
         pub fn help() void {
-            std.io.getStdOut().writer().print(help_strings.sparse_update, .{}) catch return;
+            //std.io.getStdOut().writer().print(help_strings.sparse_update, .{}) catch return;
+            var buffer: [4096]u8 = undefined;
+            var stdout_writer = std.fs.File.stdout().writer(&buffer);
+            const stdout = &stdout_writer.interface;
+            stdout.print(help_strings.sparse_slice, .{}) catch {};
+            defer {
+                stdout.flush() catch {};
+            }
+            //try stdout.flush();
         }
     } = .{},
 };
@@ -37,7 +45,10 @@ pub const UpdateCommand = struct {
         var params = Params{};
         const args = try std.process.argsAlloc(alloc);
         defer std.process.argsFree(alloc, args);
-        log.debug("run:: args: {s}", .{args});
+        //log.debug("run:: args: {any}", .{args});
+        for (args) |arg| {
+            log.debug("got cli arguments: {s}", .{arg});
+        }
 
         const cli_positionals = command.parseOptions(
             @TypeOf(params._options),
